@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diet Plan — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+    </div>
+</nav>
+
+<div class="page-md">
+    <div class="card">
+        <div class="card-header">🥗 Your Diet Plan</div>
+        <h2 class="page-title" style="font-size:1.4rem; margin-bottom:4px;">Diet Recommendation</h2>
+        <p class="page-sub">Category: <span class="badge badge-green">{{ category }}</span></p>
+
+        <div class="alert alert-success" style="white-space:pre-wrap; font-weight:400; line-height:1.7;">{{ diet }}</div>
+
+        <div style="display:flex; gap:12px; margin-top:20px;">
+            <a href="/diet" class="btn btn-primary">Try Another</a>
+            <a href="/dashboard" class="btn btn-success">Dashboard</a>
+        </div>
+    </div>
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

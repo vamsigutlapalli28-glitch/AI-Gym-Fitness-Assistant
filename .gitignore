@@ -1,0 +1,32 @@
+# Virtual Environment
+venv/
+env/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment Variables
+.env
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store
+
+# Uploaded Files
+uploads/
+
+# Logs
+*.log
+
+# SQLite (if used)
+*.sqlite3
+
+# MediaPipe Cache
+*.tflite
+
+# Temporary Files
+*.tmp

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/login" class="btn btn-ghost btn-sm">Login</a>
+    </div>
+</nav>
+
+<div class="page-sm">
+    <div class="card">
+        <div class="card-header">Create Account</div>
+        <h2 class="page-title" style="font-size:1.5rem; margin-bottom:4px;">Register</h2>
+        <p class="page-sub">Join and start your fitness journey today.</p>
+
+        <form action="/register" method="POST">
+
+            <div class="form-group">
+                <label>Full Name</label>
+                <input type="text" name="name" placeholder="John Doe" required>
+            </div>
+
+            <div class="form-group">
+                <label>Email Address</label>
+                <input type="email" name="email" placeholder="you@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" name="password" placeholder="••••••••" required>
+            </div>
+
+            <div class="form-group">
+                <label>Age</label>
+                <input type="number" name="age" placeholder="25" required>
+            </div>
+
+            <div class="form-group">
+                <label>Gender</label>
+                <select name="gender">
+                    <option>Male</option>
+                    <option>Female</option>
+                    <option>Other</option>
+                </select>
+            </div>
+
+            <button class="btn btn-success btn-block" type="submit">Create Account →</button>
+
+        </form>
+
+        <p style="text-align:center; margin-top:20px; font-size:0.85rem; color:var(--muted);">
+            Already have an account? <a href="/login" style="color:var(--accent); font-weight:600;">Login</a>
+        </p>
+    </div>
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

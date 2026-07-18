@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMI Calculator — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+    </div>
+</nav>
+
+<div class="page-sm">
+    <div class="card">
+        <div class="card-header">📊 Health Tools</div>
+        <h2 class="page-title" style="font-size:1.5rem; margin-bottom:4px;">BMI Calculator</h2>
+        <p class="page-sub">Enter your height and weight to calculate your BMI.</p>
+
+        <form action="/bmi" method="POST">
+
+            <div class="form-group">
+                <label>Height (cm)</label>
+                <input type="number" step="0.1" name="height" placeholder="170" required>
+            </div>
+
+            <div class="form-group">
+                <label>Weight (kg)</label>
+                <input type="number" step="0.1" name="weight" placeholder="65" required>
+            </div>
+
+            <button class="btn btn-primary btn-block" type="submit">Calculate BMI →</button>
+
+        </form>
+    </div>
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+    </div>
+</nav>
+
+<div class="page-md">
+    <h1 class="page-title">🤖 AI Fitness Chatbot</h1>
+    <p class="page-sub">Ask any fitness, diet, or workout question and get expert AI advice.</p>
+
+    <div class="card mb-16">
+        <form method="POST">
+            <div class="form-group">
+                <label>Your Question</label>
+                <textarea name="question" placeholder="e.g. What's the best protein for beginners?" required></textarea>
+            </div>
+            <button class="btn btn-primary btn-block" type="submit">Ask AI →</button>
+        </form>
+    </div>
+
+    {% if answer %}
+    <div class="card mb-16">
+        <div class="card-header">💬 AI Response</div>
+        <div class="alert alert-success" style="white-space:pre-wrap; font-weight:400; line-height:1.7;">{{ answer }}</div>
+    </div>
+    {% endif %}
+
+    {% if chat_history %}
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <div class="card-header" style="margin-bottom:0; padding-bottom:0; border-bottom:none;">Previous Conversations</div>
+            <a href="/clear_chat" class="btn btn-danger btn-sm">Clear Chat</a>
+        </div>
+
+        <div class="chat-history">
+            {% for chat in chat_history %}
+            <div class="chat-item">
+                <div class="chat-you">You</div>
+                <div class="chat-text">{{ chat[0] }}</div>
+                <div class="chat-ai">AI</div>
+                <div class="chat-text">{{ chat[1] }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

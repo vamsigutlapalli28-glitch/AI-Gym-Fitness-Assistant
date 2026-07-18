@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMI Result — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+    </div>
+</nav>
+
+<div class="page-sm">
+    <div class="card text-center">
+        <div class="card-header">📊 Your Result</div>
+
+        <div class="bmi-number">{{ bmi }}</div>
+        <div class="bmi-category">Category: {{ category }}</div>
+
+        <div style="display:flex; gap:12px; justify-content:center;">
+            <a href="/bmi" class="btn btn-primary">Calculate Again</a>
+            <a href="/dashboard" class="btn btn-success">Dashboard</a>
+        </div>
+    </div>
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

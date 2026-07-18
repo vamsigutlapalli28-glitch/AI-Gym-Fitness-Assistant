@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+        <a href="/logout" class="btn btn-danger btn-sm">Logout</a>
+    </div>
+</nav>
+
+<div class="page-md">
+    <h1 class="page-title">👤 User Profile</h1>
+    <p class="page-sub">Your account details and fitness history.</p>
+
+    <div class="card mb-16">
+        <div class="card-header">Account Information</div>
+
+        <div class="info-row">
+            <span class="info-label">Name</span>
+            <span class="info-value">{{ user[0] }}</span>
+        </div>
+
+        <div class="info-row">
+            <span class="info-label">Email</span>
+            <span class="info-value">{{ user[1] }}</span>
+        </div>
+
+        <div class="info-row">
+            <span class="info-label">Age</span>
+            <span class="info-value">{{ user[2] }}</span>
+        </div>
+
+        <div class="info-row">
+            <span class="info-label">Gender</span>
+            <span class="info-value">{{ user[3] }}</span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">📊 BMI History</div>
+
+        {% if bmi_history %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Height</th>
+                    <th>Weight</th>
+                    <th>BMI</th>
+                    <th>Category</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in bmi_history %}
+                <tr>
+                    <td>{{ row[0] }} cm</td>
+                    <td>{{ row[1] }} kg</td>
+                    <td>{{ "%.2f"|format(row[2]) }}</td>
+                    <td><span class="badge badge-blue">{{ row[3] }}</span></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p style="color:var(--muted); font-size:0.9rem;">No BMI history available yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

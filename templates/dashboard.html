@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/profile" class="btn btn-ghost btn-sm">👤 Profile</a>
+        <a href="/logout" class="btn btn-danger btn-sm">Logout</a>
+    </div>
+</nav>
+
+<div class="page">
+    <h1 class="page-title">Welcome, {{ username }} 👋</h1>
+    <p class="page-sub">Choose a module to get started with your fitness journey.</p>
+
+    <div class="dashboard-grid" style="grid-template-columns: repeat(3, 1fr);">
+
+        <a href="/bmi" class="dash-card">
+            <div class="dash-card-icon">
+                <img src="/static/images/bmi_calc_icon.png" alt="BMI Calculator">
+            </div>
+            <h4>BMI Calculator</h4>
+            <p>Calculate your Body Mass Index instantly.</p>
+            <span class="btn btn-primary btn-sm">Open →</span>
+        </a>
+
+        <a href="/diet" class="dash-card">
+            <div class="dash-card-icon">
+                <img src="/static/images/diet_plan_icon.png" alt="Diet Recommendation">
+            </div>
+            <h4>Diet Recommendation</h4>
+            <p>Get a personalized diet plan for your goals.</p>
+            <span class="btn btn-success btn-sm">Open →</span>
+        </a>
+
+        <a href="/workout" class="dash-card">
+            <div class="dash-card-icon">
+                <img src="/static/images/workout_track_icon.png" alt="Workout Detection">
+            </div>
+            <h4>Workout Detection</h4>
+            <p>AI-powered rep counting and form analysis.</p>
+            <span class="btn btn-primary btn-sm">Open →</span>
+        </a>
+
+        <a href="/chatbot" class="dash-card">
+            <div class="dash-card-icon">
+                <img src="/static/images/ai_chatbot_icon.png" alt="AI Chatbot">
+            </div>
+            <h4>AI Chatbot</h4>
+            <p>Ask any fitness question to your AI coach.</p>
+            <span class="btn btn-primary btn-sm">Open →</span>
+        </a>
+
+        <a href="/profile" class="dash-card">
+            <div class="dash-card-icon">
+                <svg class="tech-icon tech-icon-profile" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                </svg>
+            </div>
+            <h4>Profile</h4>
+            <p>View your details and BMI history.</p>
+            <span class="btn btn-ghost btn-sm">Open →</span>
+        </a>
+
+        <a href="/logout" class="dash-card">
+            <div class="dash-card-icon">
+                <svg class="tech-icon tech-icon-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+            </div>
+            <h4>Logout</h4>
+            <p>Exit your account safely.</p>
+            <span class="btn btn-danger btn-sm">Logout</span>
+        </a>
+
+    </div>
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

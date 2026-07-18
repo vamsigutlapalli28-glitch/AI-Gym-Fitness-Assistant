@@ -1,0 +1,8 @@
+flask
+flask-mysqldb
+bcrypt
+groq
+python-dotenv
+opencv-python
+mediapipe
+numpy

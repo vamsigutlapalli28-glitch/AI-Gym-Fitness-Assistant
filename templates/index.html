@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Gym Fitness Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<nav class="navbar">
+    <span class="navbar-brand">⚡ AI Gym</span>
+    <div class="navbar-links">
+        <a href="/login" class="btn btn-ghost btn-sm">Login</a>
+        <a href="/register" class="btn btn-primary btn-sm">Register</a>
+    </div>
+</nav>
+
+<div class="hero">
+    <h1>Your AI-Powered Fitness Coach</h1>
+    <p>Track workouts, calculate BMI, get personalized diet plans, and chat with an AI fitness expert — all in one place.</p>
+    <div class="hero-btns">
+        <a href="/register" class="btn btn-primary">Get Started →</a>
+        <a href="/login" class="btn btn-ghost">Login</a>
+    </div>
+</div>
+
+<div class="features">
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon">
+                <img src="/static/images/bmi_calc_icon.png" alt="BMI Calculator">
+            </div>
+            <h3>BMI Calculator</h3>
+            <p>Instantly calculate your Body Mass Index with detailed category analysis.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">
+                <img src="/static/images/diet_plan_icon.png" alt="Diet Planner">
+            </div>
+            <h3>Diet Planner</h3>
+            <p>Get personalized meal plans tailored to your BMI and fitness goals.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">
+                <img src="/static/images/workout_track_icon.png" alt="AI Workout Tracker">
+            </div>
+            <h3>AI Workout Tracker</h3>
+            <p>Real-time pose detection counts reps and corrects your form live.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">
+                <img src="/static/images/ai_chatbot_icon.png" alt="AI Chatbot">
+            </div>
+            <h3>AI Chatbot</h3>
+            <p>Ask any fitness question and get instant AI-powered expert advice.</p>
+        </div>
+    </div>
+</div>
+
+<footer>AI Gym Fitness Assistant © 2026</footer>
+
+</body>
+</html>

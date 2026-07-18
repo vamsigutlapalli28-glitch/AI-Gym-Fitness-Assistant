@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Workout Detection — AI Gym</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        /* ── Workout-specific styles ─────────────────────── */
+        .workout-grid {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 0 20px;
+            flex: 1;
+        }
+
+        .camera-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .camera-label {
+            padding: 12px 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: var(--accent);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .live-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse-dot 1.4s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%       { opacity: 0.4; transform: scale(0.75); }
+        }
+
+        .camera-feed {
+            width: 100%; height: auto;
+            display: block; min-height: 360px;
+            object-fit: cover;
+        }
+
+        .stats-panel { display: flex; flex-direction: column; gap: 14px; }
+
+        .reps-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            padding: 18px 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .reps-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        .rep-cell {
+            background: var(--surface2);
+            border-radius: 12px;
+            padding: 14px 12px;
+            text-align: center;
+            border: 1px solid var(--border);
+        }
+
+        .rep-cell.full-width { grid-column: 1 / -1; }
+
+        .rep-label {
+            font-size: 0.65rem; font-weight: 600;
+            letter-spacing: 1px; text-transform: uppercase;
+            color: var(--muted); margin-bottom: 6px;
+        }
+
+        .rep-value {
+            font-size: 2rem; font-weight: 800;
+            line-height: 1; color: var(--text);
+            transition: color 0.3s;
+        }
+
+        .rep-cell.left-cell  .rep-value { color: var(--accent); }
+        .rep-cell.right-cell .rep-value { color: var(--purple); }
+        .rep-cell.total-cell .rep-value { color: var(--green); }
+
+        .metrics-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+        .metric-card {
+            background: var(--surface);
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            padding: 16px; text-align: center;
+            box-shadow: var(--shadow);
+        }
+
+        .metric-label {
+            font-size: 0.65rem; font-weight: 600;
+            letter-spacing: 1px; text-transform: uppercase;
+            color: var(--muted); margin-bottom: 8px;
+        }
+
+        .metric-value { font-size: 1.35rem; font-weight: 800; color: var(--text); }
+        .metric-card.calories .metric-value { color: var(--orange); }
+        .metric-card.timer    .metric-value { color: #a78bfa; }
+
+        .coach-card {
+            background: var(--surface);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border);
+            padding: 18px 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .coach-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .coach-icon   { font-size: 1.1rem; }
+        .coach-title  {
+            font-size: 0.68rem; font-weight: 700;
+            letter-spacing: 1.4px; text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .feedback-box {
+            border-radius: 12px;
+            padding: 14px 16px;
+            font-size: 0.9rem; font-weight: 600;
+            text-align: center;
+            transition: background 0.3s, color 0.3s, border-color 0.3s;
+            border: 1.5px solid transparent;
+        }
+
+        .feedback-info    { background: #0c2a3e; color: var(--accent); border-color: rgba(56,189,248,.35); }
+        .feedback-success { background: #052e16; color: var(--green);  border-color: rgba(74,222,128,.35); }
+        .feedback-warning { background: #2d1a00; color: var(--yellow); border-color: rgba(251,191,36,.35); }
+        .feedback-danger  { background: #2d0a0a; color: var(--red);    border-color: rgba(248,113,113,.35); }
+
+        .exercise-pill {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: linear-gradient(135deg, #1e3a5f, #2d1b6b);
+            border: 1px solid rgba(56,189,248,.2);
+            border-radius: 999px; padding: 8px 20px;
+            font-size: 0.85rem; font-weight: 700;
+            color: #a5f3fc;
+        }
+
+        .exercise-row { text-align: center; }
+
+        .actions {
+            max-width: 1200px; margin: 0 auto 32px;
+            padding: 0 20px; display: flex;
+            gap: 14px; justify-content: center;
+        }
+
+        @media (max-width: 860px) {
+            .workout-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body style="display:flex; flex-direction:column; min-height:100vh;">
+
+<nav class="navbar">
+    <a href="/dashboard" class="navbar-brand">⚡ AI Gym</a>
+    <div class="navbar-links">
+        <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+    </div>
+</nav>
+
+<div style="text-align:center; padding:24px 20px 8px;">
+    <h1 class="page-title" style="font-size:1.7rem;">⚡ AI Workout Detection</h1>
+    <p class="page-sub" style="margin-bottom:0;">Perform your exercise — the AI tracks reps, form, and posture in real time</p>
+</div>
+
+<div class="workout-grid">
+
+    <div class="camera-card">
+        <div class="camera-label">
+            <span class="live-dot"></span>
+            Live Camera Feed
+        </div>
+        <img class="camera-feed" src="{{ url_for('video_feed') }}" alt="Workout Camera Feed">
+    </div>
+
+    <div class="stats-panel">
+
+        <div class="exercise-row">
+            <span class="exercise-pill">🏋️ Bicep Curl</span>
+        </div>
+
+        <div class="reps-card">
+            <div class="card-header" style="padding-bottom:10px;">Rep Counter</div>
+            <div class="reps-grid">
+                <div class="rep-cell left-cell">
+                    <div class="rep-label">Left</div>
+                    <div class="rep-value" id="leftRep">0</div>
+                </div>
+                <div class="rep-cell right-cell">
+                    <div class="rep-label">Right</div>
+                    <div class="rep-value" id="rightRep">0</div>
+                </div>
+                <div class="rep-cell total-cell full-width">
+                    <div class="rep-label">Total Reps</div>
+                    <div class="rep-value" id="totalRep">0</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="metrics-row">
+            <div class="metric-card calories">
+                <div class="metric-label">🔥 Calories</div>
+                <div class="metric-value" id="calories">0 kcal</div>
+            </div>
+            <div class="metric-card timer">
+                <div class="metric-label">⏱ Duration</div>
+                <div class="metric-value" id="timer">0 sec</div>
+            </div>
+        </div>
+
+        <div class="coach-card">
+            <div class="coach-header">
+                <span class="coach-icon">🤖</span>
+                <span class="coach-title">AI Coach</span>
+            </div>
+            <div class="feedback-box feedback-info" id="feedback">Ready to Start</div>
+        </div>
+
+    </div>
+</div>
+
+<div class="actions">
+    <a href="{{ url_for('dashboard') }}" class="btn btn-ghost">← Dashboard</a>
+    <a href="{{ url_for('finish_workout') }}" class="btn btn-success">✅ Finish Workout</a>
+</div>
+
+<script>
+setInterval(function () {
+    fetch("/workout_stats")
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById("leftRep").textContent   = data.left;
+            document.getElementById("rightRep").textContent  = data.right;
+            document.getElementById("totalRep").textContent  = data.total;
+            document.getElementById("calories").textContent  = data.calories + " kcal";
+            document.getElementById("timer").textContent     = data.duration + " sec";
+
+            const box = document.getElementById("feedback");
+            box.textContent = data.feedback.message;
+            box.className = "feedback-box";
+
+            const s = data.feedback.status;
+            if      (s === "success") box.classList.add("feedback-success");
+            else if (s === "warning") box.classList.add("feedback-warning");
+            else if (s === "danger")  box.classList.add("feedback-danger");
+            else                      box.classList.add("feedback-info");
+        });
+}, 500);
+</script>
+
+</body>
+</html>
