@@ -1,6 +1,6 @@
-# AI Gym & Fitness Assistant 🏋️🤖
+# 🏋️ AI Gym Fitness Assistant
 
-A complete, state-of-the-art AI-powered wellness ecosystem that integrates computer vision, deep learning models, persistent database tracking, and natural language AI coaches.
+An AI-powered fitness web application built with Flask, MediaPipe, OpenCV, MySQL, and Groq LLM for real-time workout tracking, posture analysis, personalized diet recommendations, and AI-powered fitness coaching.
 
 This system tracks workout forms in real-time, recommends personalized nutrition, predicts behavioral health analytics, and serves users through a responsive, premium dark-mode interface.
 
@@ -24,7 +24,7 @@ graph TD
 The intelligence is decoupled into three modular subsystems:
 *   **Workout Form Detection (`camera.py`)**: Powered by a custom **MediaPipe Pose** model and **NumPy** geometric rule engine. It tracks 33 critical landmarks, calculates dual-arm elbow angles, wrist alignments (`ELBOW` → `WRIST` → `INDEX`), shoulder symmetry, and back leaning indices. A priority-driven logical router evaluates these vectors and provides live coaching feedback.
 *   **Diet Recommendation Module (`app.py`)**: Dynamically aligns nutrition plans with physical categories. Calculates Body Mass Index (BMI) using clean formula rules and pairs results with distinct macro-nutrient profiles (e.g., protein, low carb, sage/mint balance) mapped persistently in database logs.
-*   **Behavioral Prediction & Analytics**: Logs historical performance (durations, session rep rates, calorie-burn velocity, consistency) to establish baseline workout behavior, allowing for progressive milestone predictions.
+*   **Workout History & Analytics**: Logs historical performance (durations, session rep rates, calorie-burn velocity, consistency) to establish baseline workout behavior, Logs historical workout sessions, repetitions, calories burned, and duration for future analytics and progress tracking.
 
 ### 2. Integration Layer & Backend REST APIs
 *   `GET /video_feed`: Streams processed frame byte arrays as `multipart/x-mixed-replace` boundaries directly to browser image components.
@@ -39,6 +39,56 @@ The platform maintains 5 relational MySQL schemas:
 *   `chatbot_history`: Stores persistent chat dialogue histories.
 *   `workout_history`: Tracks exercise, rep counts, duration, and calorie telemetry.
 
+---
+## Tech Stack
+
+### Backend
+
+- Flask
+- Python
+
+### Database
+
+- MySQL
+
+### AI & Computer Vision
+
+- MediaPipe
+- OpenCV
+- Groq Llama 3
+
+### Frontend
+
+- HTML
+- CSS
+- Bootstrap
+- JavaScript
+
+### Libraries
+
+- NumPy
+- bcrypt
+
+---
+## Project Structure
+
+```text
+AI_Gym_Fitness_Assistant/
+
+app.py
+
+camera.py
+
+config.py
+
+templates/
+
+static/
+
+requirements.txt
+
+README.md
+```
 ---
 
 ## 🛠️ Installation & Setup
@@ -121,6 +171,25 @@ python app.py
 Go to `http://127.0.0.1:5000` to interact with the application.
 
 ---
+## Screenshots
+
+### Home Page
+
+![Home](assets/home.png)
+
+### Dashboard
+
+![Dashboard](assets/dashboard.png)
+
+### Workout Detection
+
+![Workout](assets/workout.png)
+
+### AI Chatbot
+
+![Chatbot](assets/chatbot.png)
+
+---
 
 ## 📊 Verification & Testing Report
 
@@ -135,8 +204,34 @@ Go to `http://127.0.0.1:5000` to interact with the application.
 | **Finish Session** | Click Finish Workout button | Commit reps, calories, and duration, then clear capture state | Logged to database, state resets | **Passed** |
 
 ---
+## ✨ Features
+
+- User Authentication
+- BMI Calculator
+- Personalized Diet Recommendation
+- AI Chatbot (Groq LLM)
+- Live Workout Detection
+- AI Posture Feedback
+- Dual Arm Rep Counter
+- Workout History
+- Live Video Streaming
+- MySQL Database Integration
+- REST APIs
+---
+## Prerequisites
+
+- Python 3.10+
+- MySQL Server
+- Webcam
+- Groq API Key
+---
 
 ## 📈 Future Analytics & Scaling Roadmap
 *   **Predictive Performance Curves**: Introduce regression models predicting weight overload risks based on rep velocity fatigue.
 *   **Time-Series Progress Charts**: Build SVG dashboard charts highlighting calories burned and duration curves across consecutive weeks.
 *   **Multi-Exercise Classifier**: Extend MediaPipe landmark sequences using LSTM models to dynamically recognize Squats, Lunges, and Shoulder Presses.
+
+
+## License
+
+This project is licensed under the MIT License.
