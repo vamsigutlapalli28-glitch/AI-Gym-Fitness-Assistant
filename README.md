@@ -222,17 +222,17 @@ Go to `http://127.0.0.1:5000` to interact with the application.
 ---
 ## ✨ Features
 
-- User Authentication
-- BMI Calculator
-- Personalized Diet Recommendation
-- AI Chatbot (Groq LLM)
-- Live Workout Detection
-- AI Posture Feedback
-- Dual Arm Rep Counter
-- Workout History
-- Live Video Streaming
-- MySQL Database Integration
-- REST APIs
+- 🔐 User Authentication
+- 📏 BMI Calculator
+- 🥗 Personalized Diet Recommendation
+- 🤖 AI Chatbot (Groq LLM)
+- 🎥 Live Workout Detection
+- 🧍 AI Posture Feedback
+- 💪 Dual Arm Rep Counter
+- 📊 Workout History
+- 📡 Live Video Streaming
+- 🗄️ MySQL Database Integration
+- 🌐 REST APIs
 ---
 
 
