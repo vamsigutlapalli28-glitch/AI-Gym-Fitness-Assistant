@@ -1,3 +1,9 @@
+![Python](https://img.shields.io/badge/Python-3.10+-blue)
+![Flask](https://img.shields.io/badge/Flask-3.x-black)
+![MySQL](https://img.shields.io/badge/MySQL-Database-orange)
+![OpenCV](https://img.shields.io/badge/OpenCV-Computer%20Vision-green)
+![MediaPipe](https://img.shields.io/badge/MediaPipe-Pose-red)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 # 🏋️ AI Gym Fitness Assistant
 
 An AI-powered fitness web application built with Flask, MediaPipe, OpenCV, MySQL, and Groq LLM for real-time workout tracking, posture analysis, personalized diet recommendations, and AI-powered fitness coaching.
