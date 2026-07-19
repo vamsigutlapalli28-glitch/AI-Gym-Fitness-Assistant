@@ -2,7 +2,7 @@
 
 An AI-powered fitness web application built with Flask, MediaPipe, OpenCV, MySQL, and Groq LLM for real-time workout tracking, posture analysis, personalized diet recommendations, and AI-powered fitness coaching.
 
-This system tracks workout forms in real-time, recommends personalized nutrition, predicts behavioral health analytics, and serves users through a responsive, premium dark-mode interface.
+This system tracks workout form in real time, recommends personalized nutrition plans, provides AI-powered posture feedback, stores workout history, and serves users through a responsive dark-mode interface.
 
 ---
 
@@ -24,15 +24,17 @@ graph TD
 The intelligence is decoupled into three modular subsystems:
 *   **Workout Form Detection (`camera.py`)**: Powered by a custom **MediaPipe Pose** model and **NumPy** geometric rule engine. It tracks 33 critical landmarks, calculates dual-arm elbow angles, wrist alignments (`ELBOW` → `WRIST` → `INDEX`), shoulder symmetry, and back leaning indices. A priority-driven logical router evaluates these vectors and provides live coaching feedback.
 *   **Diet Recommendation Module (`app.py`)**: Dynamically aligns nutrition plans with physical categories. Calculates Body Mass Index (BMI) using clean formula rules and pairs results with distinct macro-nutrient profiles (e.g., protein, low carb, sage/mint balance) mapped persistently in database logs.
-*   **Workout History & Analytics**: Logs historical performance (durations, session rep rates, calorie-burn velocity, consistency) to establish baseline workout behavior, Logs historical workout sessions, repetitions, calories burned, and duration for future analytics and progress tracking.
+*   **Workout History & Analytics**
+
+Stores workout sessions including exercise type, left/right repetitions, total repetitions, calories burned, and workout duration for future analytics and progress tracking.
 
 ### 2. Integration Layer & Backend REST APIs
 *   `GET /video_feed`: Streams processed frame byte arrays as `multipart/x-mixed-replace` boundaries directly to browser image components.
 *   `GET /workout_stats`: Serves live JSON data (reps, angles, calories, duration, custom coach feedback alerts) consumed via client-side AJAX polling intervals.
-*   `POST /finish_workout`: Commits physical session performance, total reps, session length, and calories directly to the relational database, resetting camera states cleanly.
+*   `GET /finish_workout`: Commits physical session performance, total reps, session length, and calories directly to the relational database, resetting camera states cleanly.
 
 ### 3. Database Schema Layout
-The platform maintains 5 relational MySQL schemas:
+The application uses five relational MySQL tables:
 *   `users`: Stores credential verification hashes (`bcrypt`).
 *   `bmi_history`: Stores chronological height, weight, and BMI categories.
 *   `diet_history`: Stores custom nutritional diet guidelines linked to BMI.
@@ -55,7 +57,7 @@ The platform maintains 5 relational MySQL schemas:
 
 - MediaPipe
 - OpenCV
-- Groq Llama 3
+- Groq Llama 3.3
 
 ### Frontend
 
@@ -89,8 +91,16 @@ requirements.txt
 
 README.md
 ```
----
 
+---
+## Prerequisites
+
+- Python 3.10+
+- MySQL Server
+- Webcam
+- Groq API Key
+
+---
 ## 🛠️ Installation & Setup
 
 ### 1. Clone & Setup Environment
@@ -218,15 +228,9 @@ Go to `http://127.0.0.1:5000` to interact with the application.
 - MySQL Database Integration
 - REST APIs
 ---
-## Prerequisites
 
-- Python 3.10+
-- MySQL Server
-- Webcam
-- Groq API Key
----
 
-## 📈 Future Analytics & Scaling Roadmap
+## 📈 Future Enhancements
 *   **Predictive Performance Curves**: Introduce regression models predicting weight overload risks based on rep velocity fatigue.
 *   **Time-Series Progress Charts**: Build SVG dashboard charts highlighting calories burned and duration curves across consecutive weeks.
 *   **Multi-Exercise Classifier**: Extend MediaPipe landmark sequences using LSTM models to dynamically recognize Squats, Lunges, and Shoulder Presses.
