@@ -835,7 +835,7 @@ def finish_workout_session(
         tempo_score=form_s,
         performance_score=form_s,
         posture_notes=notes_text,
-        mode="manual",
+        mode=(req.mode.strip() if req and req.mode else "manual"),
     )
     db.add(ws)
     db.flush()
@@ -947,23 +947,29 @@ def api_get_gemini_workout_advice(
         .order_by(WorkoutSession.recorded_at.desc())
         .first()
     )
+    if not latest:
+        raise HTTPException(
+            status_code=400,
+            detail="Complete and save at least one workout session before requesting AI workout insights.",
+        )
+
     stats = {
-        "exercise": latest.exercise if latest else "Squat",
-        "total": latest.total_reps if latest else 30,
-        "left": latest.left_reps if latest else 15,
-        "right": latest.right_reps if latest else 15,
-        "duration": latest.duration_sec if latest else 900,
-        "calories": latest.calories_burned if latest else 120.0,
+        "exercise": latest.exercise,
+        "total": latest.total_reps,
+        "left": latest.left_reps,
+        "right": latest.right_reps,
+        "duration": latest.duration_sec,
+        "calories": latest.calories_burned,
         "left_angle": 90,
         "right_angle": 90,
-        "feedback": {"message": latest.posture_notes if latest else "Consistent form maintained"},
+        "feedback": {"message": latest.posture_notes or "Consistent form maintained"},
         "performance": {
             "rom_angle_min": 80,
             "rom_angle_max": 165,
-            "rom_efficiency": latest.avg_rom_score if latest else 90.0,
-            "posture_accuracy": latest.form_score if latest else 90.0,
+            "rom_efficiency": latest.avg_rom_score,
+            "posture_accuracy": latest.form_score,
             "symmetry_score": 94.0,
-            "performance_score": latest.performance_score if latest else 90.0,
+            "performance_score": latest.performance_score,
         },
         "posture_alerts": [],
     }
@@ -973,7 +979,20 @@ def api_get_gemini_workout_advice(
         "goal": prof.fitness_goal if prof else "Muscle Gain",
         "dietary_preference": prof.dietary_preference if prof else "Vegetarian",
     }
-    return generate_workout_gemini_advice(stats, user_ctx)
+    result = generate_workout_gemini_advice(stats, user_ctx)
+    if result.get("gemini_status") != "success" or not result.get("advice"):
+        error_code = result.get("gemini_status", "api_error")
+        http_status = 503 if error_code == "missing_api_key" else 502
+        return JSONResponse(
+            status_code=http_status,
+            content={
+                "detail": result.get("gemini_error") or "AI workout feedback service is currently unavailable.",
+                "advice": None,
+                "gemini_error_code": error_code,
+                "fallback_used": False,
+            },
+        )
+    return result
 
 
 # ==============================================================================

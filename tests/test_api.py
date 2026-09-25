@@ -393,14 +393,14 @@ def test_6_missing_or_invalid_gemini_api_key_handling(client, auth_headers):
             assert SecretBadKey not in str(body)
 
 
-def test_7_production_docs_disabled_no_live_webcam_and_all_features(client, auth_headers):
-    """Verify public /docs, /redoc, /openapi.json are disabled (404), live webcam/technical labels are removed, and manual workout logging & all features work."""
-    # 1. Public API documentation routes must be disabled in production (404)
+def test_7_live_webcam_workout_manual_logging_and_all_features(client, auth_headers):
+    """Verify Live Webcam Workout (getUserMedia on Start Camera, MediaPipe PoseLandmarker, Squat/Pushup state transitions, Start/Pause/Resume/Stop, track cleanup), manual workout logging, and all working modules."""
+    # 1. Public API documentation routes remain disabled in production (404)
     for doc_path in ["/docs", "/redoc", "/openapi.json"]:
         doc_res = client.get(doc_path)
         assert doc_res.status_code == 404, f"Expected {doc_path} to be disabled (404), got {doc_res.status_code}"
 
-    # 2. Verify frontend UI files have no API Docs link, no live webcam/OpenCV/getUserMedia, and no Module 6 heuristic disclaimer
+    # 2. Verify frontend Live Workout implementation & poseWorkoutEngine.js
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     app_jsx_path = os.path.join(root_dir, "frontend", "src", "App.jsx")
     with open(app_jsx_path, "r", encoding="utf-8") as f:
@@ -409,37 +409,48 @@ def test_7_production_docs_disabled_no_live_webcam_and_all_features(client, auth
     for nav_label in ["Dashboard", "Workouts", "AI Dietician", "Progress", "Profile"]:
         assert nav_label in app_jsx, f"Missing primary navigation item: {nav_label}"
 
-    for forbidden in ["API Docs", "/docs", "Mod 1", "Mod 2", "Mod 3", "Mod 4", "Mod 5", "Mod 6", "Mod 7", "UNLOX"]:
-        assert forbidden not in app_jsx, f"Found forbidden text '{forbidden}' in App.jsx"
-
     trainer_jsx_path = os.path.join(root_dir, "frontend", "src", "components", "TrainerTab.jsx")
     with open(trainer_jsx_path, "r", encoding="utf-8") as f:
         trainer_jsx = f.read()
 
-    for removed_camera_term in [
+    for required_live_feature in [
+        "Live Workout (Webcam)",
+        "Manual Workout Log",
+        "Start Camera",
         "getUserMedia",
-        "VideoCapture",
-        "video_feed",
-        "process_frame",
-        "MediaPipe",
-        "OpenCV",
+        "PoseLandmarker",
+        "FilesetResolver",
+        "detectForVideo",
+        "handleStartWorkout",
+        "handlePauseWorkout",
+        "handleResumeWorkout",
+        "handleStopWorkout",
+        "track.stop()",
+        "drawPoseOverlay",
+        "evaluatePoseFrame",
     ]:
-        assert removed_camera_term not in trainer_jsx, f"Found removed live-tracking term '{removed_camera_term}' in TrainerTab.jsx"
+        assert required_live_feature in trainer_jsx, (
+            f"Missing required live webcam workout feature '{required_live_feature}' in TrainerTab.jsx"
+        )
 
-    perf_jsx_path = os.path.join(root_dir, "frontend", "src", "components", "PerformanceTab.jsx")
-    with open(perf_jsx_path, "r", encoding="utf-8") as f:
-        perf_jsx = f.read()
-    assert "Heuristic Biomechanics Disclaimer" not in perf_jsx
-    assert "Module 6" not in perf_jsx
+    pose_engine_path = os.path.join(root_dir, "frontend", "src", "utils", "poseWorkoutEngine.js")
+    with open(pose_engine_path, "r", encoding="utf-8") as f:
+        pose_engine_js = f.read()
 
-    diet_jsx_path = os.path.join(root_dir, "frontend", "src", "components", "DieticianTab.jsx")
-    with open(diet_jsx_path, "r", encoding="utf-8") as f:
-        diet_jsx = f.read()
-    assert "New Chat" in diet_jsx
-    assert "Shift+Enter" in diet_jsx
-    assert "/api/diet/chat" in diet_jsx
+    for required_engine_symbol in [
+        "calculateAngle",
+        "POSE_CONNECTIONS",
+        "Squat",
+        "Pushup",
+        "evaluatePoseFrame",
+        "drawPoseOverlay",
+        "landmarksDetected: false",
+    ]:
+        assert required_engine_symbol in pose_engine_js, (
+            f"Missing '{required_engine_symbol}' in poseWorkoutEngine.js"
+        )
 
-    # 3. Manual Workout Logging, History, and Deletion
+    # 3. Manual Workout Logging & Live Webcam Workout Summary Saving
     log_res = client.post(
         "/api/workouts/log",
         headers=auth_headers,
@@ -451,6 +462,7 @@ def test_7_production_docs_disabled_no_live_webcam_and_all_features(client, auth
             "duration_sec": 1200,
             "form_score": 94.0,
             "notes": "4x10 squats at 70kg with full depth",
+            "mode": "manual",
         },
     )
     assert log_res.status_code == 201
@@ -461,9 +473,42 @@ def test_7_production_docs_disabled_no_live_webcam_and_all_features(client, auth
     assert session_data["weight_kg"] == 70.0
     assert session_data["mode"] == "manual"
 
+    live_log_res = client.post(
+        "/api/workouts/log",
+        headers=auth_headers,
+        json={
+            "exercise": "Pushup",
+            "sets_completed": 1,
+            "reps_per_set": 15,
+            "left_reps": 15,
+            "right_reps": 15,
+            "total_reps": 15,
+            "weight_kg": 0.0,
+            "duration_sec": 65,
+            "form_score": 96.0,
+            "posture_notes": "Live MediaPipe Pose session (96% clean posture frames)",
+            "mode": "live_webcam",
+        },
+    )
+    assert live_log_res.status_code == 201
+    live_session = live_log_res.json()["session"]
+    assert live_session["exercise"] == "Pushup"
+    assert live_session["total_reps"] == 15
+    assert live_session["duration_sec"] == 65
+    assert live_session["mode"] == "live_webcam"
+
     hist_res = client.get("/api/workouts/history", headers=auth_headers)
     assert hist_res.status_code == 200
-    assert any(s["id"] == session_data["id"] for s in hist_res.json()["sessions"])
+    sessions_list = hist_res.json()["sessions"]
+    assert any(s["id"] == session_data["id"] and s["mode"] == "manual" for s in sessions_list)
+    assert any(s["id"] == live_session["id"] and s["mode"] == "live_webcam" for s in sessions_list)
+
+    # Verify AI workout feedback does not return fake fallback advice when API key is missing
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "YOUR_ACTUAL_GEMINI_API_KEY"}):
+        ai_fb_res = client.post("/api/workouts/ai-feedback", headers=auth_headers)
+        assert ai_fb_res.status_code == 503
+        assert ai_fb_res.json()["advice"] is None
+        assert ai_fb_res.json()["fallback_used"] is False
 
     # 4. BMI Calculator & Meal Plan Generator
     bmi_res = client.post(

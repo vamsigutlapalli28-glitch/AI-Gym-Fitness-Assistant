@@ -659,31 +659,12 @@ def generate_workout_gemini_advice(workout_stats: Dict, user_context: Dict) -> D
             },
         }
 
-    symmetry_note = (
-        f"Your left ({left_reps}) and right ({right_reps}) counts are well balanced ({perf.get('symmetry_score', 92)}% symmetry)."
-        if abs(left_reps - right_reps) <= 1
-        else f"Notice a {abs(left_reps - right_reps)}-rep imbalance between Left ({left_reps}) and Right ({right_reps}) — lead your next set with the weaker side."
-    )
-    alert_tip = (
-        f"Address form alert: *{alerts[-1]}*"
-        if alerts
-        else f"Maintain your current posture alignment ({perf.get('posture_accuracy', 92)}% accuracy)."
-    )
-
-    local_advice = (
-        f"### Gemini AI Workout Analysis — {exercise}\n"
-        f"1. **Performance Breakdown**: You completed **{total_reps} reps** in **{duration}s** (~{calories} kcal est.) "
-        f"with an overall biomechanical score of **{perf.get('performance_score', 90)}/100** and **{perf.get('rom_efficiency', 88)}% ROM efficiency** "
-        f"({perf.get('rom_angle_min', 42)}°–{perf.get('rom_angle_max', 164)}°). {symmetry_note}\n"
-        f"2. **Biomechanical Form Cue**: {alert_tip} Focus on a controlled 2-second eccentric lowering phase and full peak contraction.\n"
-        f"3. **Next Set Target**: Rest **60–90 seconds**, hydrate, and aim for **{max(8, total_reps + 2)} clean repetitions** with >90% posture accuracy."
-    )
     return {
-        "advice": local_advice,
-        "provider": f"local_fallback ({gemini_status})",
+        "advice": None,
+        "provider": "google-genai",
         "gemini_status": gemini_status,
-        "gemini_error": gemini_error,
-        "fallback_used": True,
+        "gemini_error": gemini_error or "Unable to generate AI workout feedback from Google Gemini.",
+        "fallback_used": False,
         "privacy_note": "Processed locally via MediaPipe. Only numerical exercise statistics (0 raw video frames) were evaluated.",
         "stats_snapshot": {
             "exercise": exercise,
