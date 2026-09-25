@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Utensils,
   Calculator,
@@ -11,17 +11,40 @@ import {
   Flame,
   Sparkles,
   CheckCircle2,
+  Send,
+  RotateCcw,
+  Bot,
+  User,
+  AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import { apiFetch } from '../api';
 
 const MACRO_COLORS = ['#10b981', '#3b82f6', '#f59e0b'];
 
+const DIETICIAN_STARTER_PROMPTS = [
+  'What should I eat before or after a workout?',
+  'Give me a 2200 calorie vegetarian muscle gain plan.',
+  'How much protein do I need per day?',
+  'Suggest high-protein Indian vegetarian meals.',
+  'Can I replace paneer with tofu or soya chunks?',
+  'Create a budget-friendly diet plan.',
+  'Adjust my plan if I missed breakfast.',
+];
+
 export default function DieticianTab({ user, onUpdateOverview }) {
+  // Multi-turn AI Dietician Chatbot State
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState('');
+  const chatEndRef = useRef(null);
+
   const [bmiForm, setBmiForm] = useState({
-    height_cm: user?.profile?.height_cm || 178,
-    weight_kg: user?.profile?.weight_kg || 74.5,
-    age: user?.age || 26,
+    height_cm: user?.profile?.height_cm || 175,
+    weight_kg: user?.profile?.weight_kg || 72,
+    age: user?.age || 25,
     gender: user?.gender || 'Male',
     activity_level: user?.profile?.activity_level || 'Moderately Active',
     goal: user?.profile?.fitness_goal || 'Muscle Gain',
@@ -31,7 +54,7 @@ export default function DieticianTab({ user, onUpdateOverview }) {
   const [planForm, setPlanForm] = useState({
     goal: user?.profile?.fitness_goal || 'Muscle Gain',
     dietary_preference: user?.profile?.dietary_preference || 'Vegetarian',
-    target_calories: user?.profile?.daily_calorie_target || 2550,
+    target_calories: user?.profile?.daily_calorie_target || 2400,
   });
   const [mealPlan, setMealPlan] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
@@ -47,8 +70,20 @@ export default function DieticianTab({ user, onUpdateOverview }) {
   });
   const [checkedGroceries, setCheckedGroceries] = useState({});
   const [statusMsg, setStatusMsg] = useState('');
-  const [aiDietAdvice, setAiDietAdvice] = useState(null);
-  const [loadingAdvice, setLoadingAdvice] = useState(false);
+
+  const formatTimeNow = () => {
+    const now = new Date();
+    return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const loadDietChatHistory = async () => {
+    try {
+      const data = await apiFetch('/api/diet/chat/history');
+      setChatMessages(Array.isArray(data.messages) ? data.messages : []);
+    } catch {
+      // Keep empty chat history if not yet initialized
+    }
+  };
 
   const loadNutritionLogs = async () => {
     try {
@@ -63,8 +98,96 @@ export default function DieticianTab({ user, onUpdateOverview }) {
   };
 
   useEffect(() => {
+    loadDietChatHistory();
     loadNutritionLogs();
   }, []);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [chatMessages, chatLoading]);
+
+  const sendDietQuestion = async (textToSend) => {
+    const q = (textToSend ?? chatInput).trim();
+    if (!q || chatLoading) return;
+
+    setChatError('');
+    const priorHistory = chatMessages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .slice(-16)
+      .map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+    const timestamp = formatTimeNow();
+    const tempUserMsg = {
+      id: Date.now(),
+      role: 'user',
+      content: q,
+      created_at: timestamp,
+    };
+
+    setChatMessages((prev) => [...prev, tempUserMsg]);
+    setChatInput('');
+    setChatLoading(true);
+
+    try {
+      const res = await apiFetch('/api/diet/chat', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: q,
+          history: priorHistory,
+        }),
+      });
+      const replyText = res.answer || res.reply;
+      if (!replyText) {
+        throw new Error(
+          res.gemini_error ||
+            res.detail ||
+            'AI Dietician is temporarily unavailable. Please try again shortly.'
+        );
+      }
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          role: 'assistant',
+          content: replyText,
+          mood_tag: res.mood_tag,
+          created_at: res.created_at || formatTimeNow(),
+        },
+      ]);
+    } catch (err) {
+      setChatError(
+        err.message || 'Unable to reach the AI Dietician right now. Please try again.'
+      );
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleChatSubmit = (e) => {
+    e.preventDefault();
+    sendDietQuestion(chatInput);
+  };
+
+  const handleChatKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendDietQuestion(chatInput);
+    }
+  };
+
+  const handleNewChat = async () => {
+    setChatError('');
+    try {
+      await apiFetch('/api/diet/chat/history', { method: 'DELETE' });
+      setChatMessages([]);
+      setStatusMsg('Started a new AI Dietician conversation.');
+    } catch (err) {
+      setChatError(err.message || 'Could not reset conversation history.');
+    }
+  };
 
   const handleCalculateBmi = async (e) => {
     e.preventDefault();
@@ -107,36 +230,11 @@ export default function DieticianTab({ user, onUpdateOverview }) {
         }),
       });
       setMealPlan(res);
-      if (res.ai_coaching) {
-        setAiDietAdvice(res.ai_coaching);
-      }
       setStatusMsg(
         `Generated ${res.dietary_preference} ${res.goal} meal plan (${res.target_calories} kcal/day) & grocery list!`
       );
     } catch (err) {
       setStatusMsg(err.message);
-    }
-  };
-
-  const handleAskGeminiDietician = async () => {
-    setLoadingAdvice(true);
-    try {
-      const res = await apiFetch('/api/diet/gemini-coach', {
-        method: 'POST',
-        body: JSON.stringify({
-          goal: planForm.goal,
-          dietary_preference: planForm.dietary_preference,
-          target_calories: Number(planForm.target_calories),
-          height_cm: Number(bmiForm.height_cm),
-          weight_kg: Number(bmiForm.weight_kg),
-        }),
-      });
-      setAiDietAdvice(res);
-      setStatusMsg(`Received AI Dietician coaching from ${res.provider}!`);
-    } catch (err) {
-      setStatusMsg(err.message);
-    } finally {
-      setLoadingAdvice(false);
     }
   };
 
@@ -197,7 +295,7 @@ export default function DieticianTab({ user, onUpdateOverview }) {
   };
 
   const macros = mealPlan?.macros ||
-    bmiResult?.macros || { protein_g: 191, carbs_g: 287, fat_g: 71 };
+    bmiResult?.macros || { protein_g: 165, carbs_g: 245, fat_g: 68 };
   const macroChartData = [
     { name: 'Protein (g)', value: Number(macros.protein_g) || 160 },
     { name: 'Carbs (g)', value: Number(macros.carbs_g) || 250 },
@@ -214,7 +312,6 @@ export default function DieticianTab({ user, onUpdateOverview }) {
     nutritionData?.daily_target_calories_kcal || Number(planForm.target_calories) || 2400;
   const calPct = Math.min(100, Math.round((totals.calories_kcal / Math.max(1, dailyTarget)) * 100));
 
-  // Normalize grocery_list whether backend returns [{category, items}] or {category: items}
   const normalizedGroceryCategories = React.useMemo(() => {
     const raw = mealPlan?.grocery_list;
     if (!raw) return [];
@@ -239,29 +336,6 @@ export default function DieticianTab({ user, onUpdateOverview }) {
 
   return (
     <div className="space-y-6">
-      {/* Estimate Disclaimer Banner */}
-      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-amber-100 leading-relaxed">
-            <span className="font-bold uppercase tracking-wider text-amber-300">
-              Nutritional Estimate Disclaimer:{' '}
-            </span>
-            {nutritionData?.disclaimer ||
-              'All BMR, TDEE, calorie, and macronutrient values are mathematical estimates based on the Mifflin-St Jeor equation. Not a medical diagnosis.'}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={handleAskGeminiDietician}
-          disabled={loadingAdvice}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-emerald-500 hover:from-amber-400 hover:to-emerald-400 disabled:opacity-50 text-slate-950 font-bold px-3.5 py-2 text-xs shrink-0 cursor-pointer shadow-md"
-        >
-          <Sparkles className="w-3.5 h-3.5" />
-          {loadingAdvice ? 'Consulting Gemini...' : 'Ask Gemini AI Dietician'}
-        </button>
-      </div>
-
       {statusMsg && (
         <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs font-semibold text-emerald-200 flex items-center justify-between">
           <span>{statusMsg}</span>
@@ -274,29 +348,169 @@ export default function DieticianTab({ user, onUpdateOverview }) {
         </div>
       )}
 
-      {aiDietAdvice && (
-        <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950/40 p-4 shadow-lg space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4" /> AI Dietician Coaching Note ({aiDietAdvice.provider})
-            </span>
-            <button
-              onClick={() => setAiDietAdvice(null)}
-              className="text-xs text-slate-400 hover:text-white cursor-pointer"
-            >
-              Dismiss
-            </button>
+      {/* Conversational AI Dietician Chatbot */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/90 shadow-xl overflow-hidden flex flex-col">
+        {/* Chat Header */}
+        <div className="border-b border-slate-800 bg-slate-950/80 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-white">AI Dietician &amp; Nutrition Coach</h3>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+                  Personalized
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Tailored to your profile: {user?.profile?.fitness_goal || 'Muscle Gain'} •{' '}
+                {user?.profile?.dietary_preference || 'Vegetarian'} •{' '}
+                {user?.profile?.daily_calorie_target || 2400} kcal/day
+                {user?.profile?.allergies ? ` • Allergies: ${user.profile.allergies}` : ''}
+              </p>
+            </div>
           </div>
-          {aiDietAdvice.gemini_error && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-200">
-              {aiDietAdvice.gemini_error}
+
+          <button
+            type="button"
+            onClick={handleNewChat}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 hover:border-slate-600 bg-slate-900 hover:bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-200 transition cursor-pointer self-start sm:self-auto"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-emerald-400" />
+            New Chat
+          </button>
+        </div>
+
+        {/* Starter Prompts Bar */}
+        <div className="border-b border-slate-800/80 bg-slate-950/40 px-5 py-3">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">
+            Ask about meals, macros, Indian vegetarian recipes, or substitutions:
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {DIETICIAN_STARTER_PROMPTS.map((promptText, idx) => (
+              <button
+                key={idx}
+                type="button"
+                disabled={chatLoading}
+                onClick={() => sendDietQuestion(promptText)}
+                className="rounded-xl border border-slate-800 hover:border-emerald-500/40 bg-slate-900/90 hover:bg-emerald-500/10 px-3 py-1.5 text-xs text-slate-300 hover:text-emerald-200 transition cursor-pointer disabled:opacity-50 text-left"
+              >
+                {promptText}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Conversation Messages */}
+        <div className="p-5 space-y-4 max-h-[460px] min-h-[280px] overflow-y-auto bg-slate-950/30">
+          {chatMessages.length === 0 && !chatLoading && (
+            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/60 p-5 text-center space-y-2 my-6 max-w-xl mx-auto">
+              <Bot className="w-8 h-8 text-emerald-400 mx-auto" />
+              <h4 className="text-sm font-bold text-white">
+                Start a Multi-Turn Nutrition Conversation
+              </h4>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Ask any question about pre/post-workout nutrition, daily protein requirements,
+                high-protein Indian vegetarian meals, ingredient swaps (like paneer vs. tofu or soya
+                chunks), budget meal planning, or adjusting your macros when you miss a meal.
+              </p>
             </div>
           )}
-          <p className="text-xs text-slate-200 whitespace-pre-line leading-relaxed">
-            {aiDietAdvice.answer}
-          </p>
+
+          {chatMessages.map((m, i) => {
+            const isUser = m.role === 'user';
+            return (
+              <div
+                key={m.id || i}
+                className={`flex items-start gap-3 ${isUser ? 'flex-row-reverse' : ''}`}
+              >
+                <div
+                  className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 ${
+                    isUser
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'bg-slate-800 border border-slate-700 text-emerald-400'
+                  }`}
+                >
+                  {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                </div>
+                <div
+                  className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    isUser
+                      ? 'bg-emerald-500 text-slate-950 font-medium'
+                      : 'bg-slate-900 border border-slate-800 text-slate-100'
+                  }`}
+                >
+                  <div className="whitespace-pre-line">{m.content}</div>
+                  {m.created_at && (
+                    <div
+                      className={`mt-1.5 flex items-center gap-1 text-[10px] ${
+                        isUser ? 'text-slate-900/75 justify-end' : 'text-slate-500'
+                      }`}
+                    >
+                      <Clock className="w-2.5 h-2.5" />
+                      <span>{m.created_at}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {chatLoading && (
+            <div className="flex items-start gap-3">
+              <div className="h-8 w-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400 shrink-0">
+                <Bot className="w-4 h-4 animate-pulse" />
+              </div>
+              <div className="rounded-2xl bg-slate-900 border border-slate-800 px-4 py-3 text-xs text-slate-300 flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+                AI Dietician is preparing your personalized nutrition response...
+              </div>
+            </div>
+          )}
+
+          {chatError && (
+            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 flex items-start gap-2.5 text-xs text-rose-200">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <div className="font-bold text-rose-300">AI Dietician Service Notice</div>
+                <div>{chatError}</div>
+              </div>
+            </div>
+          )}
+
+          <div ref={chatEndRef} />
         </div>
-      )}
+
+        {/* Input Form (Enter to send, Shift+Enter for newline) */}
+        <form
+          onSubmit={handleChatSubmit}
+          className="border-t border-slate-800 bg-slate-950 p-4 flex flex-col gap-2"
+        >
+          <div className="flex items-end gap-2.5">
+            <textarea
+              rows={2}
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={handleChatKeyDown}
+              placeholder="Ask your AI Dietician anything (e.g., 'Suggest high-protein Indian vegetarian meals' or 'Can I replace paneer with tofu?')..."
+              className="flex-1 resize-none rounded-xl border border-slate-700 focus:border-emerald-500 bg-slate-900 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={chatLoading || !chatInput.trim()}
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold px-5 py-3 text-xs transition cursor-pointer shrink-0"
+            >
+              <Send className="w-4 h-4" />
+              Send
+            </button>
+          </div>
+          <div className="flex items-center justify-between text-[11px] text-slate-500 px-1">
+            <span>Press Enter to send • Shift+Enter for a new line</span>
+            <span>Nutritional values are estimates for fitness guidance</span>
+          </div>
+        </form>
+      </div>
 
       {/* Row 1: BMI/BMR Calculator + Meal Plan Configurator */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -308,7 +522,7 @@ export default function DieticianTab({ user, onUpdateOverview }) {
           <div className="flex items-center justify-between">
             <div>
               <span className="text-xs font-bold uppercase text-emerald-400">
-                Biometrics &amp; Energy Expenditure
+                Body Metrics &amp; Daily Calorie Target
               </span>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
                 <Calculator className="w-4 h-4 text-emerald-400" /> BMI, BMR &amp; TDEE Calculator
@@ -415,7 +629,7 @@ export default function DieticianTab({ user, onUpdateOverview }) {
               </div>
               {bmiResult.advice && (
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200">
-                  <span className="font-bold">Coach Recommendation: </span>
+                  <span className="font-bold">Recommendation: </span>
                   {bmiResult.advice}
                 </div>
               )}
@@ -423,15 +637,15 @@ export default function DieticianTab({ user, onUpdateOverview }) {
           )}
         </form>
 
-        {/* AI Meal Plan Generator + Macro Pie */}
+        {/* Meal Plan Generator + Macro Pie */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg flex flex-col justify-between space-y-4">
           <form onSubmit={handleGeneratePlan} className="space-y-4">
             <div>
               <span className="text-xs font-bold uppercase text-amber-400">
-                Personalized Meal &amp; Grocery Architect
+                Daily Meal &amp; Grocery Planner
               </span>
               <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Utensils className="w-4 h-4 text-amber-400" /> AI Meal Plan Generator (Veg &amp; Non-Veg)
+                <Utensils className="w-4 h-4 text-amber-400" /> Personalized Meal Plan Generator
               </h3>
             </div>
 
@@ -482,7 +696,7 @@ export default function DieticianTab({ user, onUpdateOverview }) {
               type="submit"
               className="w-full rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 text-xs transition cursor-pointer"
             >
-              Generate Personalized Meal Plan &amp; Grocery List
+              Generate Meal Plan &amp; Grocery List
             </button>
           </form>
 
@@ -680,7 +894,7 @@ export default function DieticianTab({ user, onUpdateOverview }) {
           </select>
           <input
             type="text"
-            placeholder="Food item (e.g., Paneer Tikka / Chicken Breast)"
+            placeholder="Food item (e.g., Paneer Tikka / Oats & Whey)"
             value={logForm.food_name}
             onChange={(e) => setLogForm({ ...logForm, food_name: e.target.value })}
             className="col-span-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
@@ -761,6 +975,15 @@ export default function DieticianTab({ user, onUpdateOverview }) {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Subtle Nutritional Estimate Note */}
+      <div className="rounded-xl border border-slate-800/80 bg-slate-900/50 px-4 py-3 flex items-center gap-2.5 text-xs text-slate-400">
+        <Info className="w-4 h-4 text-emerald-400 shrink-0" />
+        <span>
+          {nutritionData?.disclaimer ||
+            'All BMR, TDEE, calorie, and macronutrient values are nutritional estimates designed for fitness self-tracking and healthy meal planning.'}
+        </span>
       </div>
     </div>
   );

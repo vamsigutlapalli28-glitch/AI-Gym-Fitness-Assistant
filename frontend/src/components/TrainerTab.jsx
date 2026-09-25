@@ -1,797 +1,624 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Camera,
-  CameraOff,
-  Play,
-  Pause,
-  RotateCcw,
-  CheckCircle2,
-  Zap,
-  AlertTriangle,
-  Activity,
-  Flame,
-  Timer,
   Dumbbell,
+  CheckCircle2,
+  Clock,
+  Flame,
+  Plus,
+  Trash2,
   Sparkles,
-  ShieldCheck,
-  Monitor,
+  TrendingUp,
+  ClipboardList,
+  Calendar,
 } from 'lucide-react';
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
 import { apiFetch } from '../api';
+import PlannerTab from './PlannerTab';
 
-const EXERCISES = ['Bicep Curl', 'Squat', 'Pushup', 'Lunge', 'Shoulder Press'];
+const EXERCISE_LIBRARY = [
+  {
+    name: 'Squat',
+    muscle: 'Quadriceps, Glutes & Core',
+    defaultWeight: 60,
+    defaultSets: 4,
+    defaultReps: 10,
+    cues: [
+      'Set feet shoulder-width apart and brace your core before descending.',
+      'Lower hips until thighs are parallel or slightly below parallel.',
+      'Drive through mid-foot and keep knees tracking in line with toes.',
+    ],
+  },
+  {
+    name: 'Bench Press',
+    muscle: 'Chest, Anterior Delts & Triceps',
+    defaultWeight: 50,
+    defaultSets: 4,
+    defaultReps: 8,
+    cues: [
+      'Retract shoulder blades firmly against the bench and plant feet flat.',
+      'Lower the bar under control to mid-chest with ~45° elbow tuck.',
+      'Press smoothly to lockout while exhaling.',
+    ],
+  },
+  {
+    name: 'Deadlift',
+    muscle: 'Posterior Chain, Hamstrings & Back',
+    defaultWeight: 80,
+    defaultSets: 3,
+    defaultReps: 6,
+    cues: [
+      'Keep the barbell close to mid-foot and engage lats before lifting.',
+      'Maintain a neutral spine and push the floor away with your legs.',
+      'Lock out hips and knees together without hyperextending your lower back.',
+    ],
+  },
+  {
+    name: 'Bicep Curl',
+    muscle: 'Biceps & Forearms',
+    defaultWeight: 14,
+    defaultSets: 3,
+    defaultReps: 12,
+    cues: [
+      'Keep upper arms pinned to your sides with minimal shoulder swing.',
+      'Curl smoothly to full contraction and squeeze at the top.',
+      'Lower with a controlled 2-second eccentric phase to full extension.',
+    ],
+  },
+  {
+    name: 'Pushup',
+    muscle: 'Chest, Shoulders, Triceps & Core',
+    defaultWeight: 0,
+    defaultSets: 3,
+    defaultReps: 15,
+    cues: [
+      'Maintain a straight line from head to heels with glutes and core engaged.',
+      'Lower chest to just above the floor with elbows at a 45° angle.',
+      'Press up to full arm extension.',
+    ],
+  },
+  {
+    name: 'Lunge',
+    muscle: 'Quads, Glutes & Balance',
+    defaultWeight: 20,
+    defaultSets: 3,
+    defaultReps: 12,
+    cues: [
+      'Step forward with a stable stride and keep your torso upright.',
+      'Lower until both front and back knees reach approximately 90°.',
+      'Push through your front heel to return to the starting stance.',
+    ],
+  },
+  {
+    name: 'Shoulder Press',
+    muscle: 'Deltoids, Triceps & Upper Chest',
+    defaultWeight: 30,
+    defaultSets: 4,
+    defaultReps: 10,
+    cues: [
+      'Start weights at shoulder height with wrists stacked over elbows.',
+      'Keep ribcage down and core braced as you press overhead.',
+      'Lower under control back to shoulder level.',
+    ],
+  },
+  {
+    name: 'Lat Pulldown',
+    muscle: 'Latissimus Dorsi & Upper Back',
+    defaultWeight: 45,
+    defaultSets: 4,
+    defaultReps: 12,
+    cues: [
+      'Initiate the pull by depressing your shoulder blades.',
+      'Drive elbows down toward your hips until the bar reaches upper chest.',
+      'Control the return for a full lat stretch at the top.',
+    ],
+  },
+  {
+    name: 'Romanian Deadlift',
+    muscle: 'Hamstrings & Glutes',
+    defaultWeight: 55,
+    defaultSets: 3,
+    defaultReps: 10,
+    cues: [
+      'Keep a soft bend in the knees and hinge hips straight back.',
+      'Lower the weight along your thighs/shins until you feel a hamstring stretch.',
+      'Drive hips forward to return to standing.',
+    ],
+  },
+  {
+    name: 'Plank',
+    muscle: 'Core & Spinal Stabilizers',
+    defaultWeight: 0,
+    defaultSets: 3,
+    defaultReps: 1,
+    cues: [
+      'Stack elbows directly beneath shoulders and brace abs.',
+      'Avoid letting hips sag or pike upward.',
+      'Breathe steadily throughout each timed hold.',
+    ],
+  },
+];
 
-export default function TrainerTab({ onSessionSaved }) {
-  const [stats, setStats] = useState(null);
+export default function TrainerTab({ user, onSessionSaved }) {
+  const [subView, setSubView] = useState('log'); // 'log' | 'planner'
   const [history, setHistory] = useState([]);
-  const [selectedExercise, setSelectedExercise] = useState('Bicep Curl');
-
-  // Camera source mode: 'opencv' (OpenCV VideoCapture(0) backend stream) | 'browser' (Browser getUserMedia + MediaPipe backend) | 'demo' (Camera-Off Demo Mode)
-  const [cameraSource, setCameraSource] = useState('opencv');
-  const [cameraRunning, setCameraRunning] = useState(true);
-  const [workoutActive, setWorkoutActive] = useState(true);
-  const [permissionError, setPermissionError] = useState('');
-  const [streamKey, setStreamKey] = useState(1);
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  // Gemini AI Workout Advice state
-  const [geminiAdvice, setGeminiAdvice] = useState(null);
+  const [aiAdvice, setAiAdvice] = useState(null);
   const [loadingAdvice, setLoadingAdvice] = useState(false);
 
-  // Refs for browser getUserMedia <video> and <canvas> skeleton overlay
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const captureCanvasRef = useRef(null);
-  const mediaStreamRef = useRef(null);
-  const frameLoopRef = useRef(null);
+  const [workoutForm, setWorkoutForm] = useState({
+    exercise: 'Squat',
+    sets_completed: 4,
+    reps_per_set: 10,
+    weight_kg: 60,
+    duration_min: 20,
+    form_score: 92,
+    notes: '',
+  });
 
-  const fetchStats = useCallback(async () => {
+  const loadHistory = async () => {
     try {
-      const data = await apiFetch('/api/trainer/stats');
-      setStats(data);
+      const h = await apiFetch('/api/workouts/history');
+      setHistory(h.sessions || []);
     } catch {
-      // ignore transient poll error
+      // ignore initial load error
     }
-  }, []);
-
-  const fetchHistory = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/trainer/history');
-      setHistory(data.sessions || []);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Stop browser getUserMedia stream cleanly
-  const stopBrowserGetUserMedia = useCallback(() => {
-    if (frameLoopRef.current) {
-      clearInterval(frameLoopRef.current);
-      frameLoopRef.current = null;
-    }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      mediaStreamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-  }, []);
-
-  // Draw 33 landmarks and skeleton connections on the <canvas> overlay over browser <video>
-  const drawSkeletonOverlay = useCallback(
-    (landmarks, connections, currentStats) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const w = canvas.width;
-      const h = canvas.height;
-      ctx.clearRect(0, 0, w, h);
-
-      if (landmarks && landmarks.length > 0) {
-        const lmMap = {};
-        landmarks.forEach((lm) => {
-          lmMap[lm.index] = lm;
-        });
-
-        // Draw skeleton connections
-        ctx.strokeStyle = '#22d3ee';
-        ctx.lineWidth = 3;
-        (connections || []).forEach(([a, b]) => {
-          if (lmMap[a] && lmMap[b]) {
-            ctx.beginPath();
-            ctx.moveTo(lmMap[a].x * w, lmMap[a].y * h);
-            ctx.lineTo(lmMap[b].x * w, lmMap[b].y * h);
-            ctx.stroke();
-          }
-        });
-
-        // Draw joints
-        landmarks.forEach((lm) => {
-          if ([0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28].includes(lm.index)) {
-            const cx = lm.x * w;
-            const cy = lm.y * h;
-            ctx.beginPath();
-            ctx.arc(cx, cy, 6, 0, 2 * Math.PI);
-            ctx.fillStyle = '#10b981';
-            ctx.fill();
-            ctx.lineWidth = 2;
-            ctx.strokeStyle = '#ffffff';
-            ctx.stroke();
-          }
-        });
-
-        // Draw live joint angle callouts
-        const primaryLeft = ['Squat', 'Lunge'].includes(currentStats?.exercise) ? 25 : 13;
-        const primaryRight = ['Squat', 'Lunge'].includes(currentStats?.exercise) ? 26 : 14;
-        ctx.font = 'bold 14px Inter, sans-serif';
-        ctx.fillStyle = '#ffffff';
-        if (lmMap[primaryLeft]) {
-          ctx.fillText(
-            `${currentStats?.left_angle ?? 0}°`,
-            Math.max(10, lmMap[primaryLeft].x * w - 25),
-            Math.max(24, lmMap[primaryLeft].y * h - 12)
-          );
-        }
-        if (lmMap[primaryRight]) {
-          ctx.fillStyle = '#6ee7b7';
-          ctx.fillText(
-            `${currentStats?.right_angle ?? 0}°`,
-            Math.min(w - 60, lmMap[primaryRight].x * w + 10),
-            Math.max(24, lmMap[primaryRight].y * h - 12)
-          );
-        }
-      }
-    },
-    []
-  );
-
-  // Start Browser getUserMedia webcam + local MediaPipe backend processing loop
-  const startBrowserWebcam = useCallback(async () => {
-    setPermissionError('');
-    stopBrowserGetUserMedia();
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setPermissionError(
-        'Browser getUserMedia API is not supported in this browser context. Use OpenCV VideoCapture(0) mode or Camera-Off Demo Mode.'
-      );
-      return;
-    }
-
-    try {
-      // Release backend OpenCV handle first so the browser can claim the laptop camera
-      await apiFetch('/api/trainer/stop_camera', { method: 'POST' });
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: false,
-      });
-      mediaStreamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setCameraRunning(true);
-
-      // Process frames locally at ~5 FPS via Python MediaPipe PoseLandmarker endpoint
-      frameLoopRef.current = setInterval(async () => {
-        if (!videoRef.current || videoRef.current.readyState < 2) return;
-        const capCanvas = captureCanvasRef.current;
-        if (!capCanvas) return;
-        const ctx = capCanvas.getContext('2d');
-        ctx.drawImage(videoRef.current, 0, 0, capCanvas.width, capCanvas.height);
-        const dataUrl = capCanvas.toDataURL('image/jpeg', 0.72);
-
-        try {
-          const res = await apiFetch('/api/trainer/process_frame', {
-            method: 'POST',
-            body: JSON.stringify({
-              image_base64: dataUrl,
-              exercise: selectedExercise,
-            }),
-          });
-          if (res.stats) setStats(res.stats);
-          drawSkeletonOverlay(res.landmarks, res.connections, res.stats);
-        } catch {
-          // ignore transient frame error
-        }
-      }, 220);
-    } catch (err) {
-      let friendlyMsg = `Camera permission error: ${err.message || err.name}`;
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        friendlyMsg =
-          'Camera permission was denied by your browser. Please allow camera access in the address bar, or switch to OpenCV VideoCapture(0) / Camera-Off Demo Mode.';
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        friendlyMsg =
-          'No webcam device was found by the browser. Switching to Camera-Off Demo Mode.';
-      } else if (err.name === 'NotReadableError') {
-        friendlyMsg =
-          'Laptop webcam is currently in use by OpenCV VideoCapture(0) or another app. Click "OpenCV VideoCapture(0)" to view the direct hardware stream.';
-      }
-      setPermissionError(friendlyMsg);
-    }
-  }, [selectedExercise, stopBrowserGetUserMedia, drawSkeletonOverlay]);
+  };
 
   useEffect(() => {
-    fetchStats();
-    fetchHistory();
-    const interval = setInterval(() => {
-      if (cameraSource !== 'browser') {
-        fetchStats();
-      }
-    }, 900);
-    return () => {
-      clearInterval(interval);
-      stopBrowserGetUserMedia();
-    };
-  }, [cameraSource, fetchStats, fetchHistory, stopBrowserGetUserMedia]);
+    loadHistory();
+  }, []);
 
-  // 1. Start Camera button handler
-  const handleStartCamera = async (targetSource = cameraSource) => {
-    setPermissionError('');
-    setCameraSource(targetSource);
-
-    if (targetSource === 'browser') {
-      await startBrowserWebcam();
-      setToast('Browser getUserMedia webcam started with real-time MediaPipe Pose overlay.');
-      setTimeout(() => setToast(''), 3500);
-      return;
-    }
-
-    stopBrowserGetUserMedia();
-    const useDemo = targetSource === 'demo';
-    try {
-      const res = await apiFetch('/api/trainer/start_camera', {
-        method: 'POST',
-        body: JSON.stringify({ use_demo: useDemo }),
-      });
-      setStats(res.stats);
-      setCameraRunning(true);
-      setStreamKey((k) => k + 1);
-      setToast(
-        useDemo
-          ? 'Camera-Off Demo Mode started.'
-          : 'Laptop webcam started via OpenCV VideoCapture(0) + MediaPipe Pose Landmarker!'
-      );
-      setTimeout(() => setToast(''), 3500);
-    } catch (err) {
-      setPermissionError(err.message);
-    }
+  const handleSelectExercise = (exName) => {
+    const found = EXERCISE_LIBRARY.find((e) => e.name === exName);
+    setWorkoutForm((prev) => ({
+      ...prev,
+      exercise: exName,
+      sets_completed: found ? found.defaultSets : prev.sets_completed,
+      reps_per_set: found ? found.defaultReps : prev.reps_per_set,
+      weight_kg: found ? found.defaultWeight : prev.weight_kg,
+    }));
   };
 
-  // 2. Stop Camera button handler
-  const handleStopCamera = async () => {
-    stopBrowserGetUserMedia();
+  const handleLogWorkout = async (e) => {
+    e.preventDefault();
+    setSaving(true);
     try {
-      const res = await apiFetch('/api/trainer/stop_camera', { method: 'POST' });
-      setStats(res.stats);
-      setCameraRunning(false);
-      setToast('Camera stopped and hardware handle released.');
-      setTimeout(() => setToast(''), 3000);
-    } catch (err) {
-      setToast(err.message);
-    }
-  };
+      const setsCount = Math.max(1, Number(workoutForm.sets_completed) || 3);
+      const repsPerSet = Math.max(1, Number(workoutForm.reps_per_set) || 10);
+      const totalReps = setsCount * repsPerSet;
+      const durationSec = Math.max(60, Math.round((Number(workoutForm.duration_min) || 15) * 60));
 
-  // 3. Start / Pause Workout button handler
-  const handleToggleWorkout = async (nextActive) => {
-    setWorkoutActive(nextActive);
-    try {
-      const res = await apiFetch('/api/trainer/start_workout', {
-        method: 'POST',
-        body: JSON.stringify({ active: nextActive }),
-      });
-      setStats(res.stats);
-      setToast(
-        nextActive
-          ? `Workout started! Counting ${selectedExercise} repetitions.`
-          : 'Workout paused.'
-      );
-      setTimeout(() => setToast(''), 3000);
-    } catch (err) {
-      setToast(err.message);
-    }
-  };
-
-  // 4. Reset button handler
-  const handleReset = async () => {
-    try {
-      const data = await apiFetch('/api/trainer/reset', { method: 'POST' });
-      setStats(data);
-      setGeminiAdvice(null);
-      setToast('Session repetition counters, timer, and ROM telemetry reset.');
-      setTimeout(() => setToast(''), 3000);
-    } catch (err) {
-      setToast(err.message);
-    }
-  };
-
-  const handleExerciseChange = async (exName) => {
-    setSelectedExercise(exName);
-    try {
-      const res = await apiFetch('/api/trainer/configure', {
+      const res = await apiFetch('/api/workouts/log', {
         method: 'POST',
         body: JSON.stringify({
-          exercise: exName,
-          demo_mode: cameraSource === 'demo',
+          exercise: workoutForm.exercise,
+          sets_completed: setsCount,
+          reps_per_set: repsPerSet,
+          total_reps: totalReps,
+          weight_kg: Number(workoutForm.weight_kg) || 0,
+          duration_sec: durationSec,
+          form_score: Number(workoutForm.form_score) || 90,
+          notes: workoutForm.notes.trim() || undefined,
+          mode: 'manual',
         }),
       });
-      setStats(res.stats);
-      if (cameraSource !== 'browser') {
-        setStreamKey((k) => k + 1);
-      }
-    } catch (err) {
-      setToast(err.message);
-    }
-  };
 
-  const handleSimulateReps = async (steps = 3) => {
-    setBusy(true);
-    try {
-      const res = await apiFetch(`/api/trainer/simulate_reps?steps=${steps}`, {
-        method: 'POST',
-      });
-      setStats(res.stats);
-      setToast(`Simulated +${steps} ${selectedExercise} cycle(s)!`);
-      setTimeout(() => setToast(''), 3500);
+      setToast(
+        `Logged ${res.session.exercise}: ${setsCount} sets × ${repsPerSet} reps (${res.session.total_reps} total reps • ${res.session.calories_burned} kcal)`
+      );
+      setWorkoutForm((prev) => ({ ...prev, notes: '' }));
+      await loadHistory();
+      if (onSessionSaved) onSessionSaved();
     } catch (err) {
-      setToast(err.message);
+      setToast(err.message || 'Could not log workout session');
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   };
 
-  const handleGetGeminiAdvice = async () => {
+  const handleDeleteWorkout = async (workoutId) => {
+    try {
+      await apiFetch(`/api/workouts/${workoutId}`, { method: 'DELETE' });
+      await loadHistory();
+      if (onSessionSaved) onSessionSaved();
+      setToast('Workout log entry removed.');
+    } catch (err) {
+      setToast(err.message || 'Could not delete workout log');
+    }
+  };
+
+  const handleRequestAiFeedback = async () => {
     setLoadingAdvice(true);
     try {
-      const res = await apiFetch('/api/trainer/gemini-advice', { method: 'POST' });
-      setGeminiAdvice(res);
+      const res = await apiFetch('/api/workouts/ai-feedback', { method: 'POST' });
+      setAiAdvice(res);
+      setToast('Generated personalized AI training feedback!');
     } catch (err) {
-      setToast(err.message);
+      setToast(err.message || 'Could not generate AI workout feedback');
     } finally {
       setLoadingAdvice(false);
     }
   };
 
-  const handleFinishWorkout = async () => {
-    setBusy(true);
-    try {
-      const res = await apiFetch('/api/trainer/finish', {
-        method: 'POST',
-        body: JSON.stringify({ exercise: selectedExercise }),
-      });
-      setToast(
-        `Saved ${res.session.exercise}: ${res.session.total_reps} reps (${res.session.calories_burned} kcal, Score ${res.session.performance_score}/100)`
-      );
-      await fetchStats();
-      await fetchHistory();
-      if (onSessionSaved) onSessionSaved();
-      setTimeout(() => setToast(''), 4500);
-    } catch (err) {
-      setToast(err.message);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const selectedExerciseSpec =
+    EXERCISE_LIBRARY.find((e) => e.name === workoutForm.exercise) || EXERCISE_LIBRARY[0];
 
-  const perf = stats?.performance || {};
-  const fbStatus = stats?.feedback?.status || 'info';
-  const feedbackBadgeClass =
-    fbStatus === 'success'
-      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-      : fbStatus === 'warning'
-      ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-      : fbStatus === 'danger'
-      ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
-      : 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300';
-
-  const formatDuration = (sec = 0) => {
-    const mins = Math.floor(sec / 60);
-    const rem = sec % 60;
-    return `${String(mins).padStart(2, '0')}:${String(rem).padStart(2, '0')} (${sec}s)`;
-  };
+  const chartData = [...history]
+    .slice(0, 8)
+    .reverse()
+    .map((s) => ({
+      name: s.exercise,
+      reps: s.total_reps,
+      calories: s.calories_burned,
+    }));
 
   return (
     <div className="space-y-6">
-      {/* Header & Camera Source Mode Switcher */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg space-y-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-              Module 1 • OpenCV VideoCapture(0) + MediaPipe Pose Landmarker + Browser getUserMedia
-            </span>
-            <h2 className="text-xl font-extrabold text-white mt-0.5">
-              AI Gym Trainer &amp; Real-Time Webcam Rep Counter
-            </h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Real-time 33-landmark skeleton overlay and joint-angle state machines for Squats, Pushups, Bicep Curls, Lunges, and Shoulder Press.
-            </p>
-          </div>
-
-          {/* 3 Camera Mode Tabs */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => handleStartCamera('opencv')}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
-                cameraSource === 'opencv' && cameraRunning
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                  : 'border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <Camera className="w-3.5 h-3.5" /> OpenCV VideoCapture(0)
-            </button>
-            <button
-              onClick={() => handleStartCamera('browser')}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
-                cameraSource === 'browser' && cameraRunning
-                  ? 'bg-blue-500 text-slate-950 shadow-md shadow-blue-500/20'
-                  : 'border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <Monitor className="w-3.5 h-3.5" /> Browser getUserMedia
-            </button>
-            <button
-              onClick={() => handleStartCamera('demo')}
-              className={`inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition cursor-pointer ${
-                cameraSource === 'demo' && cameraRunning
-                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                  : 'border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              <Zap className="w-3.5 h-3.5" /> Camera-Off Demo Mode
-            </button>
-          </div>
+      {/* Sub-navigation between Workout Logger & 7-Day Split / Gym Finder */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSubView('log')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
+              subView === 'log'
+                ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Workout Logger &amp; History
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubView('planner')}
+            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition cursor-pointer ${
+              subView === 'planner'
+                ? 'bg-emerald-500 text-slate-950 shadow-sm'
+                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            7-Day Split Planner &amp; Nearby Gyms
+          </button>
         </div>
 
-        {/* Primary Action Buttons Required: Start Camera, Stop Camera, Start Workout, Reset */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => handleStartCamera(cameraSource)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-4 py-2 text-xs transition cursor-pointer shadow-md shadow-emerald-500/15"
-            >
-              <Camera className="w-3.5 h-3.5" /> Start Camera
-            </button>
-            <button
-              onClick={handleStopCamera}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/40 bg-rose-500/15 hover:bg-rose-500/25 text-rose-200 font-bold px-4 py-2 text-xs transition cursor-pointer"
-            >
-              <CameraOff className="w-3.5 h-3.5" /> Stop Camera
-            </button>
-            <button
-              onClick={() => handleToggleWorkout(!workoutActive)}
-              className={`inline-flex items-center gap-1.5 rounded-xl font-bold px-4 py-2 text-xs transition cursor-pointer ${
-                workoutActive
-                  ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30'
-                  : 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-              }`}
-            >
-              {workoutActive ? (
-                <>
-                  <Pause className="w-3.5 h-3.5" /> Pause Workout
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5" /> Start Workout
-                </>
-              )}
-            </button>
-            <button
-              onClick={handleReset}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold px-4 py-2 text-xs transition cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Reset
-            </button>
-          </div>
-
-          {/* Exercise Selection Pills */}
-          <div className="flex flex-wrap gap-1.5">
-            {EXERCISES.map((ex) => (
-              <button
-                key={ex}
-                onClick={() => handleExerciseChange(ex)}
-                className={`rounded-xl px-3.5 py-1.5 text-xs font-bold transition cursor-pointer ${
-                  selectedExercise === ex
-                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                    : 'border border-slate-800 bg-slate-950/70 text-slate-300 hover:border-slate-700 hover:text-white'
-                }`}
-              >
-                {ex}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Camera Permission / Hardware Alert Banner */}
-        {permissionError && (
-          <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3.5 flex items-start gap-2.5 text-xs text-rose-200">
-            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            <div>
-              <div className="font-bold uppercase tracking-wider text-rose-300">
-                Webcam Permission / Access Notice
-              </div>
-              <p className="mt-0.5">{permissionError}</p>
-            </div>
-          </div>
-        )}
-
-        {toast && (
-          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs font-medium text-emerald-200">
-            {toast}
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={handleRequestAiFeedback}
+          disabled={loadingAdvice}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 px-3.5 py-2 text-xs font-bold text-emerald-300 transition cursor-pointer disabled:opacity-50"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          {loadingAdvice ? 'Analyzing Training...' : 'Get AI Training Insights'}
+        </button>
       </div>
 
-      {/* Main Vision Feed + Live Stats Sidebar */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        {/* Video Feed Column */}
-        <div className="lg:col-span-7 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg flex flex-col justify-between space-y-4">
-          <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950 aspect-video flex items-center justify-center">
-            {!cameraRunning ? (
-              <div className="text-center p-6 space-y-3">
-                <CameraOff className="w-12 h-12 text-slate-600 mx-auto" />
-                <div>
-                  <p className="text-sm font-bold text-slate-300">Camera Stopped</p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Click &quot;Start Camera&quot; above to launch your laptop webcam or Camera-Off Demo Mode.
-                  </p>
-                </div>
-                <div className="flex justify-center gap-2">
-                  <button
-                    onClick={() => handleStartCamera('opencv')}
-                    className="rounded-xl bg-emerald-500 px-4 py-2 text-xs font-bold text-slate-950 cursor-pointer"
-                  >
-                    Start Laptop Webcam (OpenCV)
-                  </button>
-                  <button
-                    onClick={() => handleStartCamera('demo')}
-                    className="rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-xs font-bold text-slate-200 cursor-pointer"
-                  >
-                    Start Demo Mode
-                  </button>
-                </div>
-              </div>
-            ) : cameraSource === 'browser' ? (
-              <div className="relative w-full h-full">
-                <video
-                  ref={videoRef}
-                  playsInline
-                  muted
-                  className="w-full h-full object-contain"
-                />
-                <canvas
-                  ref={canvasRef}
-                  width={640}
-                  height={480}
-                  className="absolute inset-0 w-full h-full object-contain pointer-events-none"
-                />
-                <canvas
-                  ref={captureCanvasRef}
-                  width={640}
-                  height={480}
-                  className="hidden"
-                />
-              </div>
-            ) : (
-              <img
-                key={streamKey}
-                src={`/api/trainer/video_feed?exercise=${encodeURIComponent(
-                  selectedExercise
-                )}&demo=${cameraSource === 'demo'}&t=${streamKey}`}
-                alt="AI Pose Trainer Live Feed"
-                className="h-full w-full object-contain"
-              />
-            )}
-          </div>
+      {toast && (
+        <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2.5 text-xs font-semibold text-emerald-200 flex items-center justify-between">
+          <span>{toast}</span>
+          <button
+            onClick={() => setToast('')}
+            className="text-emerald-300 hover:text-white text-xs ml-4 cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
-          {/* Bottom Controls: Simulate Reps + Ask Gemini Coach + Save Session */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => handleSimulateReps(3)}
-                disabled={busy}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 font-bold px-3.5 py-2 text-xs transition cursor-pointer"
-              >
-                <Zap className="w-3.5 h-3.5" /> +3 Demo Reps
-              </button>
-              <button
-                onClick={handleGetGeminiAdvice}
-                disabled={loadingAdvice}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold px-4 py-2 text-xs transition cursor-pointer shadow-md shadow-purple-500/20"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                {loadingAdvice ? 'Analyzing Stats...' : 'Get Gemini AI Workout Advice'}
-              </button>
-            </div>
-
+      {aiAdvice && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-slate-900/90 p-5 shadow-lg space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4" /> AI Strength &amp; Recovery Feedback
+            </span>
             <button
-              onClick={handleFinishWorkout}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold px-5 py-2.5 text-xs transition cursor-pointer shadow-lg shadow-emerald-500/25"
+              onClick={() => setAiAdvice(null)}
+              className="text-xs text-slate-400 hover:text-white cursor-pointer"
             >
-              <CheckCircle2 className="w-4 h-4" /> Finish &amp; Save Session
+              Dismiss
             </button>
           </div>
-
-          {/* Gemini AI Workout Advice Panel (Strict Local Frame Processing Guarantee) */}
-          {geminiAdvice && (
-            <div className="rounded-2xl border border-purple-500/40 bg-purple-500/10 p-4 space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4" /> Google Gemini Workout Advice ({geminiAdvice.provider})
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-[10px] font-bold text-emerald-300">
-                  <ShieldCheck className="w-3 h-3" /> 0 Raw Video Frames Sent
-                </span>
-              </div>
-              <div className="text-xs text-slate-100 whitespace-pre-line leading-relaxed">
-                {geminiAdvice.advice}
-              </div>
-              <div className="text-[10px] text-slate-400 pt-1 border-t border-purple-500/20">
-                {geminiAdvice.privacy_note}
-              </div>
-            </div>
-          )}
+          <div className="text-xs text-slate-200 whitespace-pre-line leading-relaxed">
+            {aiAdvice.advice}
+          </div>
         </div>
+      )}
 
-        {/* Live Telemetry & Biomechanics Column */}
-        <div className="lg:col-span-5 space-y-4">
-          {/* Live Exercise & Posture Feedback Banner */}
-          <div className={`rounded-2xl border p-4 ${feedbackBadgeClass}`}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Active Exercise: {stats?.exercise || selectedExercise}
-              </span>
-              <span className="rounded-md bg-slate-950/60 px-2.5 py-0.5 text-[11px] font-bold">
-                {!cameraRunning
-                  ? 'CAMERA OFF'
-                  : stats?.is_demo_mode
-                  ? 'DEMO MODE'
-                  : 'LIVE WEBCAM'}
-              </span>
-            </div>
-            <p className="mt-2 text-sm font-bold">
-              {stats?.feedback?.message || 'Step into frame to begin pose tracking.'}
-            </p>
-          </div>
-
-          {/* Required Telemetry Cards: Exercise, Rep Count, Joint Angles, Duration */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <span className="text-xs text-slate-400 flex items-center gap-1">
-                <Dumbbell className="w-3.5 h-3.5 text-emerald-400" /> Repetition Count
-              </span>
-              <div className="mt-1 text-3xl font-extrabold text-white">{stats?.total ?? 0}</div>
-              <div className="mt-0.5 text-[11px] text-slate-400">
-                Left: {stats?.left ?? 0} • Right: {stats?.right ?? 0}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <span className="text-xs text-slate-400 flex items-center gap-1">
-                <Timer className="w-3.5 h-3.5 text-amber-400" /> Workout Duration
-              </span>
-              <div className="mt-1 text-xl font-extrabold text-amber-300">
-                {formatDuration(stats?.duration ?? 0)}
-              </div>
-              <div className="mt-0.5 text-[11px] text-slate-400 flex items-center gap-1">
-                <Flame className="w-3 h-3 text-amber-400" /> Est. {stats?.calories ?? 0} kcal burned
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <span className="text-xs text-slate-400 flex items-center gap-1">
-                <Activity className="w-3.5 h-3.5 text-cyan-400" /> Live Joint Angles
-              </span>
-              <div className="mt-1 text-xl font-extrabold text-cyan-300">
-                {stats?.left_angle ?? 0}° / {stats?.right_angle ?? 0}°
-              </div>
-              <div className="mt-0.5 text-[11px] text-slate-400">Left / Right Primary Joint</div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
-              <span className="text-xs text-slate-400 flex items-center gap-1">
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-400" /> Pose Detection
-              </span>
-              <div className="mt-1 text-sm font-extrabold text-white">
-                {stats?.landmarks_detected ? '33 Landmarks Locked' : 'Awaiting Subject'}
-              </div>
-              <div className="mt-0.5 text-[11px] text-slate-400">
-                {workoutActive ? 'Rep Counter Active' : 'Workout Paused'}
-              </div>
-            </div>
-          </div>
-
-          {/* Live Module 6 Biomechanics Telemetry */}
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white">
-                Live Pose-to-Performance Telemetry
-              </h3>
-              <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-extrabold text-emerald-300">
-                Score: {perf.performance_score ?? 90} / 100
-              </span>
-            </div>
-
-            {[
-              { label: 'Range-of-Motion (ROM) Efficiency', val: perf.rom_efficiency ?? 88, color: 'bg-emerald-500' },
-              { label: 'Posture & Alignment Accuracy', val: perf.posture_accuracy ?? 92, color: 'bg-cyan-500' },
-              { label: 'Bilateral Left/Right Symmetry', val: perf.symmetry_score ?? 94, color: 'bg-blue-500' },
-              { label: 'Repetition Tempo Consistency', val: perf.tempo_consistency ?? 88, color: 'bg-purple-500' },
-            ].map((item, idx) => (
-              <div key={idx}>
-                <div className="flex justify-between text-xs mb-1">
-                  <span className="text-slate-300">{item.label}</span>
-                  <span className="font-bold text-white">{item.val}%</span>
+      {subView === 'planner' ? (
+        <PlannerTab user={user} />
+      ) : (
+        <>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
+            {/* Manual Workout Logging Form */}
+            <form
+              onSubmit={handleLogWorkout}
+              className="lg:col-span-7 rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    Training Log
+                  </span>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Dumbbell className="w-5 h-5 text-emerald-400" /> Log Completed Workout
+                  </h3>
                 </div>
-                <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-300 ${item.color}`}
-                    style={{ width: `${Math.min(100, Math.max(10, item.val))}%` }}
+                <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-300">
+                  {Number(workoutForm.sets_completed || 0) * Number(workoutForm.reps_per_set || 0)}{' '}
+                  Total Reps
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Exercise
+                  </label>
+                  <select
+                    value={workoutForm.exercise}
+                    onChange={(e) => handleSelectExercise(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2.5 text-sm text-white focus:border-emerald-500 focus:outline-none"
+                  >
+                    {EXERCISE_LIBRARY.map((ex) => (
+                      <option key={ex.name} value={ex.name}>
+                        {ex.name} — {ex.muscle}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Sets Completed
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="30"
+                    value={workoutForm.sets_completed}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, sets_completed: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2 text-sm text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Reps per Set
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="200"
+                    value={workoutForm.reps_per_set}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, reps_per_set: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2 text-sm text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Working Weight (kg)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    max="500"
+                    value={workoutForm.weight_kg}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, weight_kg: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2 text-sm text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Duration (minutes)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="240"
+                    value={workoutForm.duration_min}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, duration_min: e.target.value })
+                    }
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2 text-sm text-white"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="font-semibold text-slate-300">Form &amp; Execution Quality</span>
+                    <span className="font-bold text-emerald-400">{workoutForm.form_score}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="60"
+                    max="100"
+                    value={workoutForm.form_score}
+                    onChange={(e) =>
+                      setWorkoutForm({ ...workoutForm, form_score: Number(e.target.value) })
+                    }
+                    className="w-full accent-emerald-500 cursor-pointer"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">
+                    Session Notes (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g., Controlled tempo, felt strong on final set"
+                    value={workoutForm.notes}
+                    onChange={(e) => setWorkoutForm({ ...workoutForm, notes: e.target.value })}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3.5 py-2 text-sm text-white placeholder-slate-500"
                   />
                 </div>
               </div>
-            ))}
+
+              <button
+                type="submit"
+                disabled={saving}
+                className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold py-3 text-sm transition cursor-pointer shadow-lg shadow-emerald-500/10"
+              >
+                <Plus className="w-4 h-4" />
+                {saving ? 'Saving Workout...' : 'Log Workout Session'}
+              </button>
+            </form>
+
+            {/* Technique Guide & Volume Chart */}
+            <div className="lg:col-span-5 space-y-6">
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-cyan-400">
+                    Technique Checkpoints
+                  </span>
+                  <span className="text-xs text-slate-400">{selectedExerciseSpec.muscle}</span>
+                </div>
+                <h4 className="text-base font-bold text-white">
+                  {selectedExerciseSpec.name} Form Guide
+                </h4>
+                <ul className="space-y-2 pt-1">
+                  {selectedExerciseSpec.cues.map((cue, idx) => (
+                    <li key={idx} className="flex items-start gap-2.5 text-xs text-slate-300">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                      <span>{cue}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-400" /> Recent Workout Volume
+                  </h4>
+                  <span className="text-xs text-slate-400">{history.length} sessions logged</span>
+                </div>
+
+                {chartData.length > 0 ? (
+                  <div className="h-44">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                        <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} />
+                        <YAxis stroke="#94a3b8" fontSize={11} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#0f172a',
+                            borderColor: '#334155',
+                            borderRadius: '0.75rem',
+                          }}
+                        />
+                        <Bar dataKey="reps" name="Total Reps" fill="#10b981" radius={[6, 6, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-slate-800/80 bg-slate-950/50 p-6 text-center text-xs text-slate-400">
+                    No workouts logged yet. Log your first workout on the left to visualize your
+                    training volume.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Recent Posture Alerts */}
-          {stats?.posture_alerts?.length > 0 && (
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5" /> Detected Form Corrections
-              </h4>
-              <ul className="mt-2 space-y-1 text-xs text-slate-300 list-disc list-inside">
-                {stats.posture_alerts.map((al, i) => (
-                  <li key={i}>{al}</li>
-                ))}
-              </ul>
+          {/* Workout History Table */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Clock className="w-4 h-4 text-emerald-400" /> Workout History
+              </h3>
+              <span className="text-xs text-slate-400">
+                Showing {history.length} recorded sessions
+              </span>
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Saved Workout Sessions History */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-lg">
-        <h3 className="text-base font-bold text-white mb-3">
-          Logged Workout Sessions ({history.length})
-        </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-800 text-xs uppercase text-slate-400">
-                <th className="py-2 px-3">Timestamp</th>
-                <th className="py-2 px-3">Exercise</th>
-                <th className="py-2 px-3">L / R / Total Reps</th>
-                <th className="py-2 px-3">Duration</th>
-                <th className="py-2 px-3">Est. Burn</th>
-                <th className="py-2 px-3">Pose Score</th>
-                <th className="py-2 px-3">Mode</th>
-                <th className="py-2 px-3">Coach Notes</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {history.map((s) => (
-                <tr key={s.id} className="hover:bg-slate-800/40">
-                  <td className="py-2.5 px-3 text-xs text-slate-400">{s.recorded_at}</td>
-                  <td className="py-2.5 px-3 font-semibold text-white">{s.exercise}</td>
-                  <td className="py-2.5 px-3 text-emerald-400 font-bold">
-                    {s.left_reps} / {s.right_reps} / {s.total_reps}
-                  </td>
-                  <td className="py-2.5 px-3 text-slate-300">{s.duration_sec}s</td>
-                  <td className="py-2.5 px-3 text-amber-400">{s.calories_burned} kcal</td>
-                  <td className="py-2.5 px-3">
-                    <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
-                      {s.performance_score}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 text-xs uppercase text-slate-400">{s.mode}</td>
-                  <td className="py-2.5 px-3 text-xs text-slate-300">{s.posture_notes}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            {history.length === 0 ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-8 text-center text-sm text-slate-400">
+                Your workout history is empty. Use the form above to record your sets, reps, and
+                working weights.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-xs uppercase text-slate-400">
+                      <th className="py-2.5 px-3">Exercise</th>
+                      <th className="py-2.5 px-3">Sets &amp; Load</th>
+                      <th className="py-2.5 px-3">Total Reps</th>
+                      <th className="py-2.5 px-3">Duration</th>
+                      <th className="py-2.5 px-3">Est. Calories</th>
+                      <th className="py-2.5 px-3">Form Rating</th>
+                      <th className="py-2.5 px-3">Notes</th>
+                      <th className="py-2.5 px-3">Date</th>
+                      <th className="py-2.5 px-3 text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {history.map((s) => (
+                      <tr key={s.id} className="hover:bg-slate-800/40">
+                        <td className="py-2.5 px-3 font-semibold text-white">{s.exercise}</td>
+                        <td className="py-2.5 px-3 text-xs text-slate-300">
+                          {s.sets_completed || 3} sets
+                          {s.weight_kg > 0 ? ` • ${s.weight_kg} kg` : ' • Bodyweight'}
+                        </td>
+                        <td className="py-2.5 px-3 font-bold text-emerald-400">{s.total_reps}</td>
+                        <td className="py-2.5 px-3 text-slate-300">
+                          {Math.max(1, Math.round((s.duration_sec || 60) / 60))} min
+                        </td>
+                        <td className="py-2.5 px-3 text-amber-400 font-semibold">
+                          <span className="inline-flex items-center gap-1">
+                            <Flame className="w-3.5 h-3.5" />
+                            {s.calories_burned} kcal
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 text-xs font-bold text-emerald-300">
+                            {s.performance_score}%
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-xs text-slate-300 max-w-xs truncate">
+                          {s.posture_notes}
+                        </td>
+                        <td className="py-2.5 px-3 text-xs text-slate-400">{s.recorded_at}</td>
+                        <td className="py-2.5 px-3 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteWorkout(s.id)}
+                            className="text-rose-400 hover:text-rose-300 p-1 cursor-pointer"
+                            title="Delete workout log"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

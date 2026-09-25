@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   MessageSquareHeart,
   Send,
-  Trash2,
+  RotateCcw,
   Sparkles,
   Bot,
   User as UserIcon,
@@ -13,40 +13,27 @@ import {
 import { apiFetch } from '../api';
 
 const QUICK_PROMPTS = [
-  'What is the capital of India?',
-  'Explain how to perform a squat correctly',
-  'Give me a vegetarian post-workout meal',
+  'Explain how to perform a squat with proper form',
+  'Give me a high-protein vegetarian post-workout meal',
   'I feel sore and exhausted today — should I train heavy or take an active recovery day?',
   'My bench press and shoulder press have plateaued for 3 weeks. How do I break through?',
+  'Give me a 15-minute mobility and core warm-up routine',
 ];
 
 export default function GymBuddyTab() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [geminiStatus, setGeminiStatus] = useState(null);
   const [geminiError, setGeminiError] = useState(null);
   const [lastMeta, setLastMeta] = useState({
     sentiment: 'positive',
     mood_tag: 'Ready',
-    provider: 'Google Gemini (google-genai SDK)',
   });
   const bottomRef = useRef(null);
 
   const loadHistory = async () => {
     try {
-      const [data, statusData] = await Promise.all([
-        apiFetch('/api/chat/history'),
-        apiFetch('/api/gemini/status').catch(() => null),
-      ]);
-      if (statusData) {
-        setGeminiStatus(statusData);
-        if (!statusData.api_key_configured && statusData.status_message) {
-          setGeminiError(statusData.status_message);
-        } else if (statusData.api_key_configured) {
-          setGeminiError(null);
-        }
-      }
+      const data = await apiFetch('/api/chat/history');
       const cleanMsgs = (data.messages || []).filter(
         (m) =>
           !(m.provider || '').startsWith('local_fallback') &&
@@ -58,7 +45,6 @@ export default function GymBuddyTab() {
         setLastMeta({
           sentiment: lastBot.sentiment || 'positive',
           mood_tag: lastBot.mood_tag || 'Ready',
-          provider: lastBot.provider || 'Google Gemini (google-genai SDK)',
         });
       }
     } catch (err) {
@@ -81,7 +67,6 @@ export default function GymBuddyTab() {
     setGeminiError(null);
     setInput('');
 
-    // Build relevant multi-turn conversation history to send to backend
     const historyPayload = messages
       .filter(
         (m) =>
@@ -99,7 +84,6 @@ export default function GymBuddyTab() {
     const userMsgId = Date.now();
     const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    // Append user's exact message immediately
     setMessages((prev) => [
       ...prev,
       { id: userMsgId, role: 'user', content: q, created_at: nowTime },
@@ -117,13 +101,12 @@ export default function GymBuddyTab() {
 
       const replyText = res.answer || res.reply;
       if (!replyText) {
-        throw new Error(res.gemini_error || 'Gemini returned an empty response.');
+        throw new Error(res.gemini_error || 'Coach service returned an empty response.');
       }
 
       setLastMeta({
         sentiment: res.sentiment || 'positive',
         mood_tag: res.mood_tag || 'Focused & Curious',
-        provider: res.provider || 'google-genai',
       });
       setGeminiError(null);
 
@@ -135,28 +118,14 @@ export default function GymBuddyTab() {
           content: replyText,
           sentiment: res.sentiment,
           mood_tag: res.mood_tag,
-          provider: res.provider,
           created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         },
       ]);
     } catch (err) {
       const errMsg =
         err.message ||
-        'Failed to generate a response from Google Gemini. Please check GEMINI_API_KEY in backend/.env.';
+        'AI Coach service is currently unavailable. Please try again shortly.';
       setGeminiError(errMsg);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          role: 'assistant',
-          content: `Gemini AI Error: ${errMsg}`,
-          isError: true,
-          sentiment: 'neutral',
-          mood_tag: 'Error',
-          provider: 'google-genai (error)',
-          created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        },
-      ]);
     } finally {
       setSending(false);
     }
@@ -172,41 +141,42 @@ export default function GymBuddyTab() {
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
   return (
     <div className="space-y-5">
-      {/* Header & Sentiment/Provider Bar */}
+      {/* Header */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-pink-400">
-            Conversational AI &amp; Sentiment Coach
+            Personal Training Assistant
           </span>
           <h2 className="text-xl font-extrabold text-white flex items-center gap-2 mt-0.5">
-            <MessageSquareHeart className="w-5 h-5 text-pink-400" /> Virtual Gym Buddy Chatbot (Google Gemini)
+            <MessageSquareHeart className="w-5 h-5 text-pink-400" /> Virtual Gym Buddy
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Powered by the official <code className="text-emerald-300">google-genai</code> SDK (
-            <code className="text-emerald-300">{geminiStatus?.model || 'gemini-2.5-flash'}</code> via{' '}
-            <code className="text-emerald-300">backend/.env</code>) with multi-turn conversation memory.
+            Ask about exercise form, workout programming, recovery, or daily motivation.
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
           <div className="rounded-xl border border-pink-500/30 bg-pink-500/10 px-3 py-1.5 text-xs">
-            <span className="text-slate-400">Detected Mood: </span>
+            <span className="text-slate-400">Coaching Tone: </span>
             <span className="font-bold text-pink-300 inline-flex items-center gap-1">
-              <Smile className="w-3.5 h-3.5" /> {lastMeta.mood_tag} ({lastMeta.sentiment})
+              <Smile className="w-3.5 h-3.5" /> {lastMeta.mood_tag}
             </span>
-          </div>
-          <div className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs">
-            <span className="text-slate-400">Engine: </span>
-            <span className="font-mono font-bold text-emerald-400">{lastMeta.provider}</span>
           </div>
           <button
             onClick={handleClear}
             disabled={sending}
-            className="inline-flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 px-3 py-1.5 text-xs text-slate-300 cursor-pointer"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 px-3.5 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer"
           >
-            <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Clear Chat
+            <RotateCcw className="w-3.5 h-3.5 text-emerald-400" /> New Chat
           </button>
         </div>
       </div>
@@ -218,9 +188,7 @@ export default function GymBuddyTab() {
         >
           <span className="flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-            <span>
-              <strong className="text-rose-300">Gemini API Error:</strong> {geminiError}
-            </span>
+            <span>{geminiError}</span>
           </span>
           <button
             onClick={() => setGeminiError(null)}
@@ -251,25 +219,14 @@ export default function GymBuddyTab() {
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {messages.map((m) => {
             const isUser = m.role === 'user';
-            const isErr = Boolean(m.isError);
             return (
               <div
                 key={m.id}
                 className={`flex items-start gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}
               >
                 {!isUser && (
-                  <div
-                    className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 border ${
-                      isErr
-                        ? 'bg-rose-500/20 border-rose-500/40'
-                        : 'bg-pink-500/20 border-pink-500/40'
-                    }`}
-                  >
-                    {isErr ? (
-                      <AlertTriangle className="w-4 h-4 text-rose-400" />
-                    ) : (
-                      <Bot className="w-4 h-4 text-pink-400" />
-                    )}
+                  <div className="h-8 w-8 rounded-xl flex items-center justify-center shrink-0 border bg-pink-500/20 border-pink-500/40">
+                    <Bot className="w-4 h-4 text-pink-400" />
                   </div>
                 )}
 
@@ -277,26 +234,19 @@ export default function GymBuddyTab() {
                   className={`max-w-2xl rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                     isUser
                       ? 'bg-emerald-500 text-slate-950 font-medium'
-                      : isErr
-                      ? 'border border-rose-500/40 bg-rose-950/40 text-rose-200'
                       : 'border border-slate-800 bg-slate-950/90 text-slate-100'
                   }`}
                 >
                   <div className="whitespace-pre-line">{m.content}</div>
                   <div
                     className={`mt-1.5 flex items-center gap-2 text-[10px] ${
-                      isUser ? 'text-slate-900/80' : isErr ? 'text-rose-300/80' : 'text-slate-400'
+                      isUser ? 'text-slate-900/80' : 'text-slate-400'
                     }`}
                   >
                     <span>{m.created_at || 'Just now'}</span>
-                    {!isUser && m.mood_tag && !isErr && (
+                    {!isUser && m.mood_tag && (
                       <span className="rounded bg-slate-800 px-1.5 py-0.5 text-pink-300">
-                        Mood: {m.mood_tag}
-                      </span>
-                    )}
-                    {!isUser && m.provider && !isErr && m.provider !== 'system' && (
-                      <span className="rounded bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 text-emerald-300 font-mono">
-                        {m.provider}
+                        {m.mood_tag}
                       </span>
                     )}
                   </div>
@@ -311,7 +261,6 @@ export default function GymBuddyTab() {
             );
           })}
 
-          {/* Loading Indicator while Gemini is generating a response */}
           {sending && (
             <div className="flex items-start gap-3 justify-start" data-testid="gemini-loading">
               <div className="h-8 w-8 rounded-xl bg-pink-500/20 border border-pink-500/40 flex items-center justify-center shrink-0">
@@ -319,7 +268,7 @@ export default function GymBuddyTab() {
               </div>
               <div className="max-w-2xl rounded-2xl px-4 py-3 text-sm border border-pink-500/30 bg-slate-950/90 text-slate-200 flex items-center gap-2.5">
                 <Loader2 className="w-4 h-4 text-pink-400 animate-spin shrink-0" />
-                <span>Gemini is generating a response...</span>
+                <span>Preparing your coaching response...</span>
               </div>
             </div>
           )}
@@ -333,24 +282,25 @@ export default function GymBuddyTab() {
             e.preventDefault();
             sendMessage();
           }}
-          className="border-t border-slate-800 p-3.5 flex items-center gap-3 bg-slate-950/60 rounded-b-2xl"
+          className="border-t border-slate-800 p-3.5 flex items-end gap-3 bg-slate-950/60 rounded-b-2xl"
         >
-          <input
-            type="text"
+          <textarea
+            rows={2}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             disabled={sending}
-            placeholder="Ask Virtual Gym Buddy anything (workouts, squat form, vegetarian meals, or general questions)..."
-            className="flex-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-pink-500 disabled:opacity-60"
+            placeholder="Ask Virtual Gym Buddy about workouts, exercise form, recovery, or nutrition (Enter to send, Shift+Enter for new line)..."
+            className="flex-1 resize-none rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-pink-500 disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="inline-flex items-center gap-2 rounded-xl bg-pink-500 hover:bg-pink-400 disabled:opacity-50 text-slate-950 font-bold px-5 py-2.5 text-xs transition cursor-pointer"
+            className="inline-flex items-center gap-2 rounded-xl bg-pink-500 hover:bg-pink-400 disabled:opacity-50 text-slate-950 font-bold px-5 py-3 text-xs transition cursor-pointer shrink-0"
           >
             {sending ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Generating...
+                <Loader2 className="w-4 h-4 animate-spin" /> Sending...
               </>
             ) : (
               <>
@@ -363,4 +313,3 @@ export default function GymBuddyTab() {
     </div>
   );
 }
-

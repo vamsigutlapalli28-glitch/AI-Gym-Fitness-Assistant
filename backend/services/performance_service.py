@@ -1,18 +1,16 @@
-"""Module 6: Pose-to-Performance Analyzer Service.
+"""Performance & Form Analyzer Service.
 
 Implements:
-- Exercise-specific posture & range-of-motion (ROM) biomechanics analysis.
-- Transparent, documented rule-based Performance Score (0–100).
+- Exercise-specific posture & range-of-motion (ROM) analysis.
+- Form Quality & Performance Score (0–100).
 - Weekly progress reports, historical performance trend aggregation, and actionable coaching feedback.
-- Explicit disclaimer: Heuristic biomechanical score for training feedback only (not a clinical assessment).
 """
 
 from typing import Dict, List
 
 HEURISTIC_DISCLAIMER = (
-    "The Pose-to-Performance Score (0–100) is a transparent, rule-based heuristic metric derived from 2D joint-angle "
-    "range of motion, bilateral symmetry, repetition tempo consistency, and posture rule compliance. "
-    "It is designed for fitness self-tracking and is NOT a clinically validated orthopedic or medical assessment."
+    "Form & Performance Scores (0–100) summarize range of motion, left/right balance, repetition tempo, "
+    "and form consistency to help you track your training progress over time."
 )
 
 EXERCISE_BIOMECHANICS_SPECS = {

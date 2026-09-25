@@ -353,8 +353,121 @@ def generate_buddy_reply(
 
 
 # ==============================================================================
-# 2. AI DIETICIAN COACH GEMINI INTEGRATION
+# 2. AI DIETICIAN COACH GEMINI INTEGRATION (MULTI-TURN CONVERSATION & ANALYSIS)
 # ==============================================================================
+
+def generate_dietician_chat_reply(
+    question: str,
+    conversation_history: List[Dict[str, str]],
+    user_context: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Generates a real, personalized, multi-turn AI Dietician response using Google Gemini (`google-genai`).
+
+    Supports pre/post-workout meals, daily protein/calorie targets, muscle gain, weight loss,
+    Indian & vegetarian foods, ingredient substitutions (e.g., paneer vs. tofu/soya chunks),
+    budget-friendly meals, and dynamic daily adjustments (e.g., missed breakfast).
+    Never returns a fake or hardcoded AI response when Gemini is unavailable.
+    """
+    clean_question = question.strip()
+    sentiment_info = analyze_user_sentiment(clean_question)
+
+    name = user_context.get("name") or "Member"
+    age = user_context.get("age")
+    gender = user_context.get("gender")
+    height_cm = user_context.get("height_cm")
+    weight_kg = user_context.get("weight_kg")
+    target_weight_kg = user_context.get("target_weight_kg")
+    goal = user_context.get("goal") or user_context.get("fitness_goal") or "General Fitness"
+    diet_pref = user_context.get("dietary_preference") or "Balanced"
+    allergies = (user_context.get("allergies") or "").strip() or "None reported"
+    activity_level = user_context.get("activity_level") or "Moderately Active"
+    calorie_target = user_context.get("daily_calorie_target") or 2200
+    logged_cal = user_context.get("logged_calories_today")
+    logged_pro = user_context.get("logged_protein_today")
+
+    profile_lines = [
+        f"- Name: {name}",
+        f"- Age: {age if age is not None else 'Not specified'}",
+        f"- Gender: {gender or 'Not specified'}",
+        f"- Height: {f'{height_cm} cm' if height_cm else 'Not specified'}",
+        f"- Current Weight: {f'{weight_kg} kg' if weight_kg else 'Not specified'}",
+        f"- Target Weight: {f'{target_weight_kg} kg' if target_weight_kg else 'Not specified'}",
+        f"- Fitness Goal: {goal}",
+        f"- Dietary Preference: {diet_pref}",
+        f"- Allergies / Intolerances: {allergies}",
+        f"- Activity Level: {activity_level}",
+        f"- Daily Calorie Target: {calorie_target} kcal/day",
+    ]
+    if logged_cal is not None:
+        profile_lines.append(
+            f"- Logged Nutrition Today So Far: {logged_cal} kcal ({logged_pro or 0}g protein)"
+        )
+
+    system_prompt = (
+        "You are an expert AI Dietician & Sports Nutritionist. "
+        "Your role is to provide practical, science-informed, culturally adaptable nutrition, meal planning, hydration, and recovery coaching.\n\n"
+        "USER PROFILE CONTEXT (use these exact details to personalize your advice; never invent missing user details):\n"
+        + "\n".join(profile_lines)
+        + "\n\nCRITICAL GUIDELINES:\n"
+        "1. Answer the user's specific nutrition, meal plan, calorie, protein, weight loss, muscle gain, Indian food, vegetarian/vegan/non-vegetarian, food substitution, or budget meal question directly.\n"
+        "2. Respect the user's Dietary Preference and Allergies/Intolerances at all times. For example, if they ask about replacing paneer with tofu or soya chunks, compare protein per 100g, calories, digestibility, and culinary usage.\n"
+        "3. When suggesting meals or daily plans, include practical portion sizes (e.g., grams, bowls, rotis, scoops) and estimated calories & protein/carbs/fat.\n"
+        "4. If the user asks how to adjust their plan (e.g., if they missed breakfast or trained late), redistribute their remaining daily calories and protein practically across their remaining meals.\n"
+        "5. Use prior conversation history to handle follow-up questions seamlessly. Ask 1 brief, relevant follow-up question when helpful to refine their plan.\n"
+        "6. Keep guidance focused on nutrition, fitness, hydration, recovery, and healthy habits. Treat all calorie/macro numbers as nutritional estimates and avoid making unsupported medical diagnoses or clinical claims."
+    )
+
+    contents: List[types.Content] = []
+    for msg in conversation_history[-16:]:
+        role_raw = (msg.get("role") or "").lower()
+        role = "model" if role_raw in ("assistant", "model") else "user"
+        text_val = (msg.get("content") or "").strip()
+        provider_val = (msg.get("provider") or "").lower()
+
+        if not text_val:
+            continue
+        if provider_val == "system" or provider_val.startswith("local_fallback"):
+            continue
+        if text_val.startswith("### Coach Response for ") or text_val.startswith("Chat history cleared!"):
+            continue
+
+        contents.append(
+            types.Content(role=role, parts=[types.Part.from_text(text=text_val)])
+        )
+
+    if not contents or contents[-1].role != "user" or contents[-1].parts[0].text != clean_question:
+        contents.append(
+            types.Content(role="user", parts=[types.Part.from_text(text=clean_question)])
+        )
+
+    answer, gemini_status, gemini_error, model_name = _call_gemini(
+        prompt_or_contents=contents,
+        system_instruction=system_prompt,
+        temperature=0.65,
+        max_output_tokens=950,
+    )
+
+    if answer and gemini_status == "success":
+        return {
+            "answer": answer,
+            "sentiment": sentiment_info["sentiment"],
+            "mood_tag": sentiment_info["mood_tag"],
+            "provider": f"google-genai ({model_name})",
+            "gemini_status": "success",
+            "gemini_error": None,
+            "fallback_used": False,
+        }
+
+    return {
+        "answer": None,
+        "sentiment": sentiment_info["sentiment"],
+        "mood_tag": sentiment_info["mood_tag"],
+        "provider": f"google-genai ({gemini_status})",
+        "gemini_status": gemini_status,
+        "gemini_error": gemini_error or "AI Dietician service is temporarily unavailable. Please try again shortly.",
+        "fallback_used": False,
+    }
+
 
 def generate_diet_gemini_coaching(
     diet_plan: Dict,
@@ -369,7 +482,7 @@ def generate_diet_gemini_coaching(
     macros = diet_plan.get("macros", {})
 
     system_prompt = (
-        "You are an AI Sports Dietician & Calorie Coach powered by Google Gemini. "
+        "You are an AI Sports Dietician & Calorie Coach. "
         "Provide practical, culturally adaptable, evidence-based nutrition guidance in concise Markdown. "
         "Remind the user that calorie and macro figures are estimates and not medical prescriptions."
     )
@@ -400,11 +513,11 @@ def generate_diet_gemini_coaching(
         }
 
     fallback_notes = (
-        f"### AI Dietician Coaching Summary ({goal} • {pref})\n"
-        f"1. **Protein Distribution (~{macros.get('protein_g', 160)}g/day):** Split protein evenly across 4–5 feedings (~30–40g per meal) to maximize muscle protein synthesis.\n"
-        f"2. **Peri-Workout Carbohydrate Timing (~{macros.get('carbs_g', 240)}g/day):** Consume 35–40% of your daily complex carbohydrates in the window 90 minutes before and 60 minutes after training.\n"
-        f"3. **Micronutrients & Hydration:** Pair iron-rich {'plant sources (spinach, lentils, chickpeas)' if pref == 'Vegetarian' else 'lean proteins'} with Vitamin C (lemon/citrus) and target 3.0–3.5L of water daily.\n"
-        "*(Note: All calorie and macro targets are mathematical estimates, not medical advice.)*"
+        f"### Nutrition & Meal Timing Summary ({goal} • {pref})\n"
+        f"1. **Protein Distribution (~{macros.get('protein_g', 160)}g/day):** Split protein evenly across 4–5 meals (~30–40g per meal) to support muscle recovery.\n"
+        f"2. **Workout Fueling (~{macros.get('carbs_g', 240)}g/day):** Consume complex carbohydrates 60–90 minutes before training and pair protein with carbs after your workout.\n"
+        f"3. **Micronutrients & Hydration:** Pair iron-rich {'plant sources (spinach, lentils, chickpeas)' if pref == 'Vegetarian' else 'lean proteins'} with Vitamin C and aim for 3.0–3.5L of water daily.\n"
+        "*(Note: Calorie and macro targets are nutritional estimates, not medical advice.)*"
     )
     return {
         "coaching_notes": fallback_notes,

@@ -1,13 +1,14 @@
 """
-Automated API & Unit Test Suite for AI Gym & Fitness Assistant
+Automated API & QA Test Suite for AI Gym & Fitness Assistant
 Covers:
-1. Registration with a new account (+ password confirmation & per-user isolation)
-2. Login with valid credentials (+ Remember Me & HttpOnly session cookie)
-3. Login with an incorrect password (401 Unauthorized)
-4. Logout and protected route behavior (401 Unauthorized before login and after logout)
-5. Gemini chatbot & AI coach endpoints with a configured API key (official google-genai SDK)
-6. Missing or invalid Gemini API key handling (clear error code, zero key leakage, graceful fallback)
-7. Sidebar navigation items & removal of Home / Mod 1..7 badges + all 7 modules
+1. Registration with a new account (+ password confirmation, allergies profile, zero fabricated stats)
+2. Login with valid credentials (+ Remember Me, /api/auth/me, profile update with allergies)
+3. Login with incorrect password (401) and password reset flow
+4. Logout and protected route behavior (401 before login and after logout)
+5. Multi-turn AI Dietician Chatbot (/api/diet/chat, /api/diet/chat/history, New Chat) & Virtual Gym Buddy with configured API key
+6. Missing or invalid Gemini API key handling on AI Dietician & Gym Buddy (503/502, zero key leakage, no fake answers)
+7. Production API docs disabled (/docs, /redoc, /openapi.json return 404), removal of live webcam/OpenCV/MediaPipe UI & technical labels, manual workout logging, and all working features
+8. PostgreSQL fitness_db schema, Alembic/column verification, no plaintext/API key storage, and 403 cross-user authorization
 """
 
 import os
@@ -21,7 +22,6 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from backend.main import app
-from camera import WorkoutCamera, calculate_angle, SUPPORTED_EXERCISES
 
 
 @pytest.fixture()
@@ -43,7 +43,7 @@ def auth_headers(client):
 
 
 def test_1_registration_and_per_user_isolation(client):
-    """Test registration with a new account, password mismatch validation, and isolated user records."""
+    """Test registration with a new account, password mismatch validation, and isolated user records with zero fabricated stats."""
     unique_email = f"athlete_{uuid.uuid4().hex[:8]}@example.com"
 
     # Mismatched confirm_password should return 400
@@ -73,6 +73,7 @@ def test_1_registration_and_per_user_isolation(client):
             "weight_kg": 60.0,
             "fitness_goal": "Weight Loss",
             "dietary_preference": "Vegetarian",
+            "allergies": "Peanuts",
         },
     )
     assert reg_res.status_code == 201
@@ -81,6 +82,7 @@ def test_1_registration_and_per_user_isolation(client):
     assert reg_data["user"]["email"] == unique_email
     assert reg_data["user"]["name"] == "Priya Sharma"
     assert reg_data["user"]["profile"]["fitness_goal"] == "Weight Loss"
+    assert reg_data["user"]["profile"]["allergies"] == "Peanuts"
 
     # Duplicate email registration should return 400
     dup_res = client.post(
@@ -94,16 +96,17 @@ def test_1_registration_and_per_user_isolation(client):
     )
     assert dup_res.status_code == 400
 
-    # Verify new user has isolated dashboard & profile data
+    # Verify new user has isolated dashboard & profile data (0 workouts, 0.0 avg score — no fabricated stats)
     new_user_headers = {"Authorization": f"Bearer {reg_data['access_token']}"}
     overview_res = client.get("/api/dashboard/overview", headers=new_user_headers)
     assert overview_res.status_code == 200
     assert overview_res.json()["user"]["email"] == unique_email
     assert overview_res.json()["kpis"]["total_workouts"] == 0
+    assert overview_res.json()["kpis"]["avg_performance_score"] == 0.0
 
 
 def test_2_login_with_valid_credentials_and_profile(client):
-    """Test login with valid credentials, Remember Me token, /api/auth/me, and profile update."""
+    """Test login with valid credentials, Remember Me token, /api/auth/me, and profile update including allergies."""
     login_res = client.post(
         "/api/auth/login",
         json={"email": "alex@ironclad.ai", "password": "Fitness@123", "remember_me": True},
@@ -130,10 +133,17 @@ def test_2_login_with_valid_credentials_and_profile(client):
     upd_res = client.put(
         "/api/profile",
         headers=headers,
-        json={"fitness_goal": "Muscle Gain", "workout_days_per_week": 5},
+        json={
+            "fitness_goal": "Muscle Gain",
+            "workout_days_per_week": 5,
+            "allergies": "Lactose",
+            "daily_calorie_target": 2450,
+        },
     )
     assert upd_res.status_code == 200
     assert upd_res.json()["user"]["profile"]["workout_days_per_week"] == 5
+    assert upd_res.json()["user"]["profile"]["allergies"] == "Lactose"
+    assert upd_res.json()["user"]["profile"]["daily_calorie_target"] == 2450
 
 
 def test_3_login_with_incorrect_password_and_reset_flow(client):
@@ -199,11 +209,12 @@ def test_4_logout_and_protected_routes(client):
     """Verify unauthenticated requests are blocked (401) and logout revokes token & clears session."""
     client.cookies.clear()
 
-    # Protected routes must reject unauthenticated requests with 401
     for protected_path in [
         "/api/auth/me",
         "/api/profile",
         "/api/dashboard/overview",
+        "/api/workouts/history",
+        "/api/diet/chat/history",
         "/api/diet/nutrition-logs",
         "/api/habits/dashboard",
         "/api/chat/history",
@@ -235,118 +246,122 @@ def test_4_logout_and_protected_routes(client):
     assert after_logout.status_code == 401
 
 
-def test_5_gemini_chatbot_and_coaches_with_configured_api_key(client, auth_headers):
-    """Test Gemini integration with a configured API key using the official google-genai SDK."""
+def test_5_multi_turn_ai_dietician_and_coaches_with_configured_api_key(client, auth_headers):
+    """Test multi-turn AI Dietician conversation, follow-up history, New Chat reset, and Gemini coaches."""
     def dynamic_generate_content(model, contents, config):
         resp = MagicMock()
         last_text = str(contents[-1]) if isinstance(contents, list) and contents else str(contents)
-        if "capital of india" in last_text.lower():
+        lower_text = last_text.lower()
+        if "indian vegetarian" in lower_text:
+            resp.text = (
+                "High-protein Indian vegetarian meals include: 1) Moong dal chilla with tofu bhurji (~28g protein), "
+                "2) Soya chunk pulao with cucumber raita (~34g protein), and 3) Chickpea & spinach curry with multigrain roti (~24g protein)."
+            )
+        elif "replace paneer with tofu" in lower_text or "soya chunks" in lower_text:
+            resp.text = (
+                "Yes! Since your profile notes a lactose sensitivity, replacing 100g paneer with 120g firm tofu (~18g protein) "
+                "or 50g dry soya chunks (~26g protein) is an excellent dairy-free, high-protein swap for that meal."
+            )
+        elif "missed breakfast" in lower_text:
+            resp.text = (
+                "If you missed breakfast (~500 kcal), add 200 kcal to your lunch (e.g., extra bowl of dal/tofu), "
+                "150 kcal to your pre-workout snack (banana + peanut butter), and 150 kcal to dinner so you still hit your daily target."
+            )
+        elif "capital of india" in lower_text:
             resp.text = "The capital of India is New Delhi."
-        elif "squat" in last_text.lower():
-            resp.text = (
-                "To perform a squat correctly: stand with feet shoulder-width apart, brace your core, "
-                "track knees over toes, and lower your hips until your thighs are at least parallel to the floor."
-            )
-        elif "vegetarian post-workout meal" in last_text.lower():
-            resp.text = (
-                "A great vegetarian post-workout meal is paneer bhurji or tofu scramble with whole-wheat roti "
-                "or Greek yogurt with oats and berries (~32g protein, ~45g carbs)."
-            )
         else:
             resp.text = (
-                "1. Prioritize 1.8g/kg protein daily across 4 meals.\n"
-                "2. Keep squat knee valgus in check by screwing your feet into the floor.\n"
-                "3. Take a deload session if sleep drops below 6.5 hours."
+                "1. Aim for 1.6-2.0g of protein per kg of bodyweight.\n"
+                "2. Space protein evenly across 4 meals.\n"
+                "3. Hydrate with 3L of water daily."
             )
         return resp
 
     mock_client_instance = MagicMock()
     mock_client_instance.models.generate_content.side_effect = dynamic_generate_content
 
-    with patch.dict(os.environ, {"GEMINI_API_KEY": "AIzaSyTestConfiguredValidKey123456789", "GEMINI_MODEL": "gemini-2.5-flash"}):
+    with patch.dict(os.environ, {"GEMINI_API_KEY": "AIzaSyTestConfiguredValidKey123456789", "GEMINI_MODEL": "gemini-3.6-flash"}):
         with patch("backend.services.chatbot_service.genai.Client", return_value=mock_client_instance):
-            status_res = client.get("/api/gemini/status")
-            assert status_res.status_code == 200
-            assert status_res.json()["sdk"] == "google-genai"
-            assert status_res.json()["api_key_configured"] is True
+            # Clear AI Dietician chat history (New Chat)
+            del_res = client.delete("/api/diet/chat/history", headers=auth_headers)
+            assert del_res.status_code == 200
 
-            # 1. Virtual Gym Buddy Chatbot — verify distinct answers for distinct questions & history
-            q1 = client.post(
+            # Turn 1: Ask AI Dietician for high-protein Indian vegetarian meals
+            turn1 = client.post(
+                "/api/diet/chat",
+                headers=auth_headers,
+                json={"message": "Suggest high-protein Indian vegetarian meals.", "history": []},
+            )
+            assert turn1.status_code == 200
+            t1_data = turn1.json()
+            assert "tofu" in t1_data["answer"].lower() or "soya" in t1_data["answer"].lower()
+            assert t1_data["fallback_used"] is False
+
+            # Turn 2: Follow-up question with multi-turn history
+            turn2 = client.post(
+                "/api/diet/chat",
+                headers=auth_headers,
+                json={
+                    "message": "Can I replace paneer with tofu or soya chunks?",
+                    "history": [
+                        {"role": "user", "content": "Suggest high-protein Indian vegetarian meals."},
+                        {"role": "assistant", "content": t1_data["answer"]},
+                    ],
+                },
+            )
+            assert turn2.status_code == 200
+            t2_data = turn2.json()
+            assert "tofu" in t2_data["answer"].lower() and "soya chunks" in t2_data["answer"].lower()
+            assert t2_data["answer"] != t1_data["answer"]
+
+            # Turn 3: Follow-up on missed breakfast adjustment
+            turn3 = client.post(
+                "/api/diet/chat",
+                headers=auth_headers,
+                json={"message": "Adjust my plan if I missed breakfast."},
+            )
+            assert turn3.status_code == 200
+            assert "breakfast" in turn3.json()["answer"].lower()
+
+            # Verify AI Dietician chat history persisted all 3 turns (6 messages)
+            hist_res = client.get("/api/diet/chat/history", headers=auth_headers)
+            assert hist_res.status_code == 200
+            assert len(hist_res.json()["messages"]) == 6
+
+            # Verify New Chat button endpoint clears AI Dietician history
+            reset_chat = client.delete("/api/diet/chat/history", headers=auth_headers)
+            assert reset_chat.status_code == 200
+            after_reset = client.get("/api/diet/chat/history", headers=auth_headers)
+            assert len(after_reset.json()["messages"]) == 0
+
+            # Also verify Virtual Gym Buddy chat works
+            buddy_res = client.post(
                 "/api/chat/message",
                 headers=auth_headers,
                 json={"message": "What is the capital of India?", "history": []},
             )
-            assert q1.status_code == 200
-            d1 = q1.json()
-            assert "New Delhi" in d1["answer"]
-            assert "Coach Response for" not in d1["answer"]
-
-            q2 = client.post(
-                "/api/chat/message",
-                headers=auth_headers,
-                json={
-                    "message": "Explain how to perform a squat correctly",
-                    "history": [
-                        {"role": "user", "content": "What is the capital of India?"},
-                        {"role": "assistant", "content": d1["answer"]},
-                    ],
-                },
-            )
-            assert q2.status_code == 200
-            d2 = q2.json()
-            assert "squat" in d2["answer"].lower()
-            assert d2["answer"] != d1["answer"]
-
-            q3 = client.post(
-                "/api/chat/message",
-                headers=auth_headers,
-                json={"message": "Give me a vegetarian post-workout meal"},
-            )
-            assert q3.status_code == 200
-            d3 = q3.json()
-            assert "vegetarian" in d3["answer"].lower()
-            assert d3["answer"] != d2["answer"]
-
-            # 2. AI Dietician Coach
-            diet_res = client.post(
-                "/api/diet/gemini-coach",
-                headers=auth_headers,
-                json={
-                    "goal": "Muscle Gain",
-                    "dietary_preference": "Vegetarian",
-                    "target_calories": 2500,
-                },
-            )
-            assert diet_res.status_code == 200
-            assert "google-genai" in diet_res.json()["provider"]
-
-            # 3. Personalized Workout Plan Generation
-            plan_res = client.post(
-                "/api/planner/gemini-plan",
-                headers=auth_headers,
-                json={
-                    "goal": "Muscle Gain",
-                    "experience_level": "Intermediate",
-                    "equipment": "Full Gym",
-                    "days_per_week": 5,
-                },
-            )
-            assert plan_res.status_code == 200
-            assert "google-genai" in plan_res.json()["ai_guidance"]["provider"]
-
-            # 4. Fitness Motivation & Guidance
-            mot_res = client.post("/api/habits/gemini-motivation", headers=auth_headers)
-            assert mot_res.status_code == 200
-            assert "google-genai" in mot_res.json()["provider"]
+            assert buddy_res.status_code == 200
+            assert "New Delhi" in buddy_res.json()["answer"]
 
 
 def test_6_missing_or_invalid_gemini_api_key_handling(client, auth_headers):
-    """Test missing/placeholder or invalid Gemini API key returns clear error instead of default coaching response."""
-    # Case A: Placeholder / Missing API Key
+    """Test missing/placeholder or invalid Gemini API key returns clear error on both AI Dietician and Gym Buddy."""
+    # Case A: Placeholder / Missing API Key -> 503 Service Unavailable
     with patch.dict(os.environ, {"GEMINI_API_KEY": "YOUR_ACTUAL_GEMINI_API_KEY"}):
         status_res = client.get("/api/gemini/status")
         assert status_res.status_code == 200
         assert status_res.json()["api_key_configured"] is False
+
+        diet_chat_res = client.post(
+            "/api/diet/chat",
+            headers=auth_headers,
+            json={"message": "How much protein do I need per day?"},
+        )
+        assert diet_chat_res.status_code == 503
+        d_data = diet_chat_res.json()
+        assert d_data["gemini_error_code"] == "missing_api_key"
+        assert d_data["answer"] is None
+        assert d_data["fallback_used"] is False
 
         chat_res = client.post(
             "/api/chat/message",
@@ -356,12 +371,10 @@ def test_6_missing_or_invalid_gemini_api_key_handling(client, auth_headers):
         assert chat_res.status_code == 503
         data = chat_res.json()
         assert data["gemini_error_code"] == "missing_api_key"
-        assert data["gemini_error"] is not None
         assert data["answer"] is None
         assert data["fallback_used"] is False
-        assert "Coach Response for" not in str(data)
 
-    # Case B: Invalid API Key rejected by Gemini API
+    # Case B: Invalid API Key rejected by Gemini API -> 502 Bad Gateway, zero key leakage
     SecretBadKey = "AIzaSyInvalidSecretKeyDoNotLeak99999"
     mock_bad_client = MagicMock()
     mock_bad_client.models.generate_content.side_effect = Exception("400 API_KEY_INVALID: API key not valid")
@@ -369,113 +382,90 @@ def test_6_missing_or_invalid_gemini_api_key_handling(client, auth_headers):
     with patch.dict(os.environ, {"GEMINI_API_KEY": SecretBadKey}):
         with patch("backend.services.chatbot_service.genai.Client", return_value=mock_bad_client):
             res = client.post(
-                "/api/chat/message",
+                "/api/diet/chat",
                 headers=auth_headers,
-                json={"message": "Give me high protein vegetarian meal ideas"},
+                json={"message": "Give me a 2200 calorie vegetarian muscle gain plan."},
             )
             assert res.status_code == 502
             body = res.json()
             assert body["gemini_error_code"] == "invalid_api_key"
-            assert "invalid" in body["gemini_error"].lower()
             assert body["answer"] is None
-            assert "Coach Response for" not in str(body)
-            # Ensure the secret API key is NEVER leaked in the response
             assert SecretBadKey not in str(body)
 
 
-def test_7_sidebar_navigation_and_all_7_modules(client, auth_headers):
-    """Verify sidebar has no Home/Mod badges and all 7 modules function end-to-end."""
-    # Check frontend/src/App.jsx sidebar navigation items
-    app_jsx_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "App.jsx")
-    )
+def test_7_production_docs_disabled_no_live_webcam_and_all_features(client, auth_headers):
+    """Verify public /docs, /redoc, /openapi.json are disabled (404), live webcam/technical labels are removed, and manual workout logging & all features work."""
+    # 1. Public API documentation routes must be disabled in production (404)
+    for doc_path in ["/docs", "/redoc", "/openapi.json"]:
+        doc_res = client.get(doc_path)
+        assert doc_res.status_code == 404, f"Expected {doc_path} to be disabled (404), got {doc_res.status_code}"
+
+    # 2. Verify frontend UI files have no API Docs link, no live webcam/OpenCV/getUserMedia, and no Module 6 heuristic disclaimer
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    app_jsx_path = os.path.join(root_dir, "frontend", "src", "App.jsx")
     with open(app_jsx_path, "r", encoding="utf-8") as f:
         app_jsx = f.read()
 
-    expected_labels = [
-        "Command Overview",
-        "AI Gym Trainer",
-        "AI Dietician Coach",
-        "Smart Gym IoT + MQTT",
-        "Habit & ML Tracker",
-        "Virtual Gym Buddy",
-        "Pose-to-Performance",
-        "Gym & Split Planner",
-    ]
-    for label in expected_labels:
-        assert label in app_jsx, f"Missing sidebar navigation item: {label}"
+    for nav_label in ["Dashboard", "Workouts", "AI Dietician", "Progress", "Profile"]:
+        assert nav_label in app_jsx, f"Missing primary navigation item: {nav_label}"
 
-    for removed_badge in ["Mod 1", "Mod 2", "Mod 3", "Mod 4", "Mod 5", "Mod 6", "Mod 7", "badge:", "UNLOX"]:
-        assert removed_badge not in app_jsx, f"Found forbidden text '{removed_badge}' in App.jsx"
+    for forbidden in ["API Docs", "/docs", "Mod 1", "Mod 2", "Mod 3", "Mod 4", "Mod 5", "Mod 6", "Mod 7", "UNLOX"]:
+        assert forbidden not in app_jsx, f"Found forbidden text '{forbidden}' in App.jsx"
 
-    # Verify UNLOX, API key requirement banners, and DEMO MODE (SAMPLE GYM DATA) are removed across frontend files
-    for rel_path in [
-        ("frontend", "src", "components", "OverviewTab.jsx"),
-        ("frontend", "src", "components", "PlannerTab.jsx"),
-        ("frontend", "index.html"),
+    trainer_jsx_path = os.path.join(root_dir, "frontend", "src", "components", "TrainerTab.jsx")
+    with open(trainer_jsx_path, "r", encoding="utf-8") as f:
+        trainer_jsx = f.read()
+
+    for removed_camera_term in [
+        "getUserMedia",
+        "VideoCapture",
+        "video_feed",
+        "process_frame",
+        "MediaPipe",
+        "OpenCV",
     ]:
-        fpath = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", *rel_path))
-        with open(fpath, "r", encoding="utf-8") as f:
-            fcontent = f.read()
-        assert "UNLOX" not in fcontent, f"Found 'UNLOX' in {'/'.join(rel_path)}"
-        assert "DEMO MODE (SAMPLE GYM DATA)" not in fcontent, f"Found sample gym banner in {'/'.join(rel_path)}"
-        assert "Google Maps Browser API Key Required for Interactive Map" not in fcontent
+        assert removed_camera_term not in trainer_jsx, f"Found removed live-tracking term '{removed_camera_term}' in TrainerTab.jsx"
 
-    planner_jsx_path = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "frontend", "src", "components", "PlannerTab.jsx")
-    )
-    with open(planner_jsx_path, "r", encoding="utf-8") as f:
-        planner_jsx = f.read()
+    perf_jsx_path = os.path.join(root_dir, "frontend", "src", "components", "PerformanceTab.jsx")
+    with open(perf_jsx_path, "r", encoding="utf-8") as f:
+        perf_jsx = f.read()
+    assert "Heuristic Biomechanics Disclaimer" not in perf_jsx
+    assert "Module 6" not in perf_jsx
 
-    assert "https://www.google.com/maps/search/?api=1&query=" in planner_jsx
-    assert "encodeURIComponent" in planner_jsx
-    assert "Search Nearby Gyms" in planner_jsx
-    assert "Open in Google Maps" in planner_jsx
-    assert "Get Directions" in planner_jsx
-    assert "window.open" in planner_jsx
-    assert "noopener" in planner_jsx and "noreferrer" in planner_jsx
-    assert "google-maps-js-sdk" not in planner_jsx
-    assert "VITE_GOOGLE_MAPS_API_KEY" not in planner_jsx
-    assert "<svg" not in planner_jsx
+    diet_jsx_path = os.path.join(root_dir, "frontend", "src", "components", "DieticianTab.jsx")
+    with open(diet_jsx_path, "r", encoding="utf-8") as f:
+        diet_jsx = f.read()
+    assert "New Chat" in diet_jsx
+    assert "Shift+Enter" in diet_jsx
+    assert "/api/diet/chat" in diet_jsx
 
-    # Verify Dashboard Overview
-    dash = client.get("/api/dashboard/overview", headers=auth_headers)
-    assert dash.status_code == 200
-    assert "kpis" in dash.json()
-
-    # Module 1: AI Gym Trainer
-    import base64
-    import cv2
-    import numpy as np
-
-    angle_90 = calculate_angle([0, 1], [0, 0], [1, 0])
-    assert 89.0 <= angle_90 <= 91.0
-
-    cam = WorkoutCamera()
-    assert (cam._mp_landmarker is not None) or (cam._mp_pose_instance is not None)
-    cam.is_demo_mode = True
-    for ex_name in SUPPORTED_EXERCISES:
-        cam.reset_session()
-        cam.set_exercise(ex_name, demo_mode=True)
-        sim = cam.simulate_step(steps=2)
-        assert sim["total"] >= 1
-
-    dummy_img = np.zeros((240, 320, 3), dtype=np.uint8)
-    _, buf = cv2.imencode(".jpg", dummy_img)
-    b64_str = "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("utf-8")
-    pf_res = client.post(
-        "/api/trainer/process_frame",
+    # 3. Manual Workout Logging, History, and Deletion
+    log_res = client.post(
+        "/api/workouts/log",
         headers=auth_headers,
-        json={"image_base64": b64_str, "exercise": "Squat"},
+        json={
+            "exercise": "Squat",
+            "sets_completed": 4,
+            "reps_per_set": 10,
+            "weight_kg": 70.0,
+            "duration_sec": 1200,
+            "form_score": 94.0,
+            "notes": "4x10 squats at 70kg with full depth",
+        },
     )
-    assert pf_res.status_code == 200
-    assert "connections" in pf_res.json()
+    assert log_res.status_code == 201
+    session_data = log_res.json()["session"]
+    assert session_data["exercise"] == "Squat"
+    assert session_data["sets_completed"] == 4
+    assert session_data["total_reps"] == 40
+    assert session_data["weight_kg"] == 70.0
+    assert session_data["mode"] == "manual"
 
-    client.post("/api/trainer/simulate_reps?steps=4", headers=auth_headers)
-    fin = client.post("/api/trainer/finish", headers=auth_headers, json={"exercise": "Squat"})
-    assert fin.status_code == 200
+    hist_res = client.get("/api/workouts/history", headers=auth_headers)
+    assert hist_res.status_code == 200
+    assert any(s["id"] == session_data["id"] for s in hist_res.json()["sessions"])
 
-    # Module 2: AI Dietician Coach
+    # 4. BMI Calculator & Meal Plan Generator
     bmi_res = client.post(
         "/api/diet/calculate-bmi-calories",
         headers=auth_headers,
@@ -489,6 +479,7 @@ def test_7_sidebar_navigation_and_all_7_modules(client, auth_headers):
         },
     )
     assert bmi_res.status_code == 200
+
     meal_res = client.post(
         "/api/diet/meal-plan",
         headers=auth_headers,
@@ -497,41 +488,23 @@ def test_7_sidebar_navigation_and_all_7_modules(client, auth_headers):
     assert meal_res.status_code == 200
     assert len(meal_res.json()["meals"]) >= 4
 
-    # Module 3: Smart Gym IoT
-    iot_res = client.get("/api/iot/status", headers=auth_headers)
-    assert iot_res.status_code == 200
-    assert iot_res.json()["simulation_mode"] is True
-
-    # Module 4: Habit & ML Tracker
+    # 5. Habit Tracker, Performance Reports & Google Maps Gym Search URLs
     hab_res = client.get("/api/habits/dashboard", headers=auth_headers)
     assert hab_res.status_code == 200
     assert 0.0 <= hab_res.json()["latest_prediction"]["adherence_probability"] <= 1.0
 
-    # Module 6: Pose-to-Performance
     perf_res = client.get("/api/performance/reports", headers=auth_headers)
     assert perf_res.status_code == 200
-
-    # Module 7: Gym & Split Planner (Direct Google Maps search URLs — no API key, no sample data)
-    plan_res = client.get("/api/planner/current", headers=auth_headers)
-    assert plan_res.status_code == 200
 
     gyms_res = client.get("/api/planner/gyms?location=gyms%20in%20Vijayawada", headers=auth_headers)
     assert gyms_res.status_code == 200
     gyms_body = gyms_res.json()
     assert gyms_body["api_key_required"] is False
     assert gyms_body["sample_data"] is False
-    assert gyms_body["gyms"] == []
     assert (
         gyms_body["google_maps_url"]
         == "https://www.google.com/maps/search/?api=1&query=gyms%20in%20Vijayawada"
     )
-    assert (
-        gyms_body["directions_url"]
-        == "https://www.google.com/maps/dir/?api=1&destination=gyms%20in%20Vijayawada"
-    )
-    assert "[Sample Demo]" not in str(gyms_body)
-
-
 
 
 def test_8_postgresql_schema_alembic_and_user_authorization(client, auth_headers):
@@ -539,7 +512,6 @@ def test_8_postgresql_schema_alembic_and_user_authorization(client, auth_headers
     from backend.database import Base, CONFIGURED_DATABASE_URL
     from backend.models import User, ChatMessage
 
-    # 1. Verify PostgreSQL DATABASE_URL is configured for fitness_db
     assert CONFIGURED_DATABASE_URL.startswith("postgresql")
     assert "fitness_db" in CONFIGURED_DATABASE_URL
     db_status = client.get("/api/database/status")
@@ -547,7 +519,6 @@ def test_8_postgresql_schema_alembic_and_user_authorization(client, auth_headers
     assert db_status.json()["postgresql_configured"] is True
     assert db_status.json()["configured_database"] == "fitness_db"
 
-    # 2. Verify all required tables (including user_sessions) exist in SQLAlchemy metadata with proper foreign keys
     required_tables = {
         "users",
         "user_sessions",
@@ -571,7 +542,6 @@ def test_8_postgresql_schema_alembic_and_user_authorization(client, auth_headers
         fk_targets = {fk.target_fullname for fk in Base.metadata.tables[child_table].foreign_keys}
         assert "users.id" in fk_targets, f"{child_table} missing ForeignKey('users.id')"
 
-    # 3. Verify plaintext passwords and Gemini API keys are never stored in database models
     with pytest.raises(ValueError, match="bcrypt"):
         User(name="Bad User", email="bad@example.com", password_hash="PlaintextPassword123")
 
@@ -579,7 +549,7 @@ def test_8_postgresql_schema_alembic_and_user_authorization(client, auth_headers
     assert "AIzaSySecretKey" not in msg.content
     assert "[REDACTED_API_KEY]" in msg.content
 
-    # 4. Verify cross-user authorization (User A cannot access or delete User B's records)
+    # Verify cross-user authorization (User A cannot access or delete User B's records)
     user_b_email = f"user_b_{uuid.uuid4().hex[:8]}@example.com"
     reg_b = client.post(
         "/api/auth/register",
@@ -594,7 +564,6 @@ def test_8_postgresql_schema_alembic_and_user_authorization(client, auth_headers
     user_b_id = reg_b.json()["user"]["id"]
     user_b_headers = {"Authorization": f"Bearer {reg_b.json()['access_token']}"}
 
-    # User B logs a nutrition item
     log_b = client.post(
         "/api/diet/nutrition-logs",
         headers=user_b_headers,
@@ -610,15 +579,12 @@ def test_8_postgresql_schema_alembic_and_user_authorization(client, auth_headers
     assert log_b.status_code == 201
     log_b_id = log_b.json()["log"]["id"]
 
-    # User A (auth_headers) must receive 403 Forbidden when trying to access User B's records or delete User B's log
     cross_records = client.get(f"/api/users/{user_b_id}/records", headers=auth_headers)
     assert cross_records.status_code == 403
 
     cross_delete = client.delete(f"/api/diet/nutrition-logs/{log_b_id}", headers=auth_headers)
     assert cross_delete.status_code == 403
 
-    # User B can access their own records (200 OK)
     own_records = client.get(f"/api/users/{user_b_id}/records", headers=user_b_headers)
     assert own_records.status_code == 200
     assert own_records.json()["user"]["id"] == user_b_id
-

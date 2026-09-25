@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import sessionmaker
 
 from backend.database import (
@@ -147,6 +147,25 @@ def cleanup_legacy_fallback_chat_rows() -> None:
         db.commit()
 
 
+def ensure_schema_columns() -> None:
+    """Non-destructively ensures newly added columns exist on existing PostgreSQL or SQLite tables."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+
+    with engine.begin() as conn:
+        if "fitness_profiles" in existing_tables:
+            fp_cols = {c["name"] for c in inspector.get_columns("fitness_profiles")}
+            if "allergies" not in fp_cols:
+                conn.execute(text("ALTER TABLE fitness_profiles ADD COLUMN allergies VARCHAR(255) DEFAULT ''"))
+
+        if "workout_history" in existing_tables:
+            wh_cols = {c["name"] for c in inspector.get_columns("workout_history")}
+            if "sets_completed" not in wh_cols:
+                conn.execute(text("ALTER TABLE workout_history ADD COLUMN sets_completed INTEGER DEFAULT 3"))
+            if "weight_kg" not in wh_cols:
+                conn.execute(text("ALTER TABLE workout_history ADD COLUMN weight_kg FLOAT DEFAULT 0.0"))
+
+
 def initialize_database() -> dict:
     """Ensures PostgreSQL `fitness_db` is migrated via Alembic and preserves all existing data."""
     if CONFIGURED_DATABASE_URL.startswith("postgresql"):
@@ -154,6 +173,7 @@ def initialize_database() -> dict:
 
     run_alembic_migrations()
     Base.metadata.create_all(bind=engine)
+    ensure_schema_columns()
     sync_existing_sqlite_data_to_postgresql()
     cleanup_legacy_fallback_chat_rows()
 

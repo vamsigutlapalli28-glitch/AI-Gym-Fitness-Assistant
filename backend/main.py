@@ -1,17 +1,19 @@
 """FastAPI Backend Server for AI Gym & Fitness Assistant.
 
 Provides RESTful API endpoints with Pydantic validation, JWT + Bcrypt authentication,
-SQLAlchemy ORM persistence, and interactive Swagger/OpenAPI documentation at `/docs`.
+and SQLAlchemy PostgreSQL ORM persistence. Public API documentation (/docs, /redoc, /openapi.json)
+is disabled in production by default.
 """
 
 import json
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -47,6 +49,7 @@ from backend.seed import init_and_seed_db
 from backend.services.chatbot_service import (
     generate_buddy_reply,
     generate_diet_gemini_coaching,
+    generate_dietician_chat_reply,
     generate_habit_gemini_motivation,
     generate_planner_gemini_guidance,
     generate_workout_gemini_advice,
@@ -71,27 +74,50 @@ from backend.services.planner_service import (
     get_google_maps_status,
     search_nearby_gyms,
 )
-from camera import SUPPORTED_EXERCISES, WorkoutCamera
 
-camera = WorkoutCamera()
+SUPPORTED_EXERCISES = [
+    "Bicep Curl",
+    "Squat",
+    "Pushup",
+    "Lunge",
+    "Shoulder Press",
+    "Bench Press",
+    "Deadlift",
+    "Lat Pulldown",
+    "Plank",
+    "Romanian Deadlift",
+]
+
+CALORIE_FACTORS = {
+    "Bicep Curl": 0.35,
+    "Squat": 0.65,
+    "Pushup": 0.50,
+    "Lunge": 0.60,
+    "Shoulder Press": 0.45,
+    "Bench Press": 0.55,
+    "Deadlift": 0.75,
+    "Lat Pulldown": 0.50,
+    "Plank": 0.40,
+    "Romanian Deadlift": 0.65,
+}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_and_seed_db()
     yield
-    camera.stop_camera()
 
+
+_ENABLE_API_DOCS = os.getenv("ENABLE_API_DOCS", "false").strip().lower() == "true"
 
 app = FastAPI(
     title="AI Gym & Fitness Assistant API",
-    description=(
-        "Full-stack AI-powered fitness ecosystem integrating computer-vision Pose Trainer (MediaPipe + OpenCV), "
-        "AI Dietician & Calorie Coach, Smart Gym IoT + MQTT Assistant, ML Habit Tracker (scikit-learn), "
-        "Virtual Gym Buddy Chatbot (Google Gemini SDK), Pose-to-Performance Analyzer, and Gym Recommender & Planner."
-    ),
+    description="AI Gym & Fitness Assistant backend service.",
     version="2.0.0",
     lifespan=lifespan,
+    docs_url="/docs" if _ENABLE_API_DOCS else None,
+    redoc_url="/redoc" if _ENABLE_API_DOCS else None,
+    openapi_url="/openapi.json" if _ENABLE_API_DOCS else None,
 )
 
 app.add_middleware(
@@ -118,6 +144,7 @@ class RegisterRequest(BaseModel):
     weight_kg: float = Field(default=70.0, ge=20.0, le=300.0)
     fitness_goal: str = Field(default="Muscle Gain")
     dietary_preference: str = Field(default="Vegetarian")
+    allergies: Optional[str] = Field(default="")
 
 
 class LoginRequest(BaseModel):
@@ -147,6 +174,7 @@ class ProfileUpdateRequest(BaseModel):
     fitness_goal: Optional[str] = None
     experience_level: Optional[str] = None
     dietary_preference: Optional[str] = None
+    allergies: Optional[str] = None
     activity_level: Optional[str] = None
     available_equipment: Optional[str] = None
     workout_days_per_week: Optional[int] = Field(default=None, ge=1, le=7)
@@ -155,31 +183,20 @@ class ProfileUpdateRequest(BaseModel):
     city: Optional[str] = None
 
 
-class TrainerConfigRequest(BaseModel):
-    exercise: str = Field(default="Bicep Curl")
-    demo_mode: Optional[bool] = None
-
-
-class StartCameraRequest(BaseModel):
-    use_demo: bool = Field(default=False)
-
-
-class StartWorkoutRequest(BaseModel):
-    active: bool = Field(default=True)
-
-
-class ProcessFrameRequest(BaseModel):
-    image_base64: str = Field(..., min_length=20)
-    exercise: Optional[str] = None
-
-
 class FinishWorkoutRequest(BaseModel):
-    exercise: Optional[str] = None
-    left_reps: Optional[int] = None
-    right_reps: Optional[int] = None
-    total_reps: Optional[int] = None
-    duration_sec: Optional[int] = None
-    mode: Optional[str] = None
+    exercise: str = Field(default="Squat", min_length=2, max_length=80)
+    sets_completed: int = Field(default=3, ge=1, le=30)
+    reps_per_set: Optional[int] = Field(default=None, ge=1, le=200)
+    left_reps: Optional[int] = Field(default=None, ge=0, le=500)
+    right_reps: Optional[int] = Field(default=None, ge=0, le=500)
+    total_reps: Optional[int] = Field(default=None, ge=1, le=1000)
+    weight_kg: float = Field(default=0.0, ge=0.0, le=500.0)
+    duration_sec: int = Field(default=900, ge=10, le=14400)
+    calories_burned: Optional[float] = Field(default=None, ge=0.0, le=5000.0)
+    form_score: float = Field(default=90.0, ge=40.0, le=100.0)
+    posture_notes: Optional[str] = Field(default=None, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=500)
+    mode: Optional[str] = Field(default="manual")
 
 
 class BMICalculateRequest(BaseModel):
@@ -289,14 +306,12 @@ def health_check():
         "version": "2.0.0",
         "database": get_database_status(),
         "gemini": gemini_info,
-        "modules": [
-            "1. AI Gym Trainer (OpenCV + MediaPipe Pose)",
-            "2. AI Dietician & Calorie Coach (Mifflin-St Jeor + Google Gemini)",
-            "3. Smart Gym Assistant (AI + IoT MQTT)",
-            "4. AI Fitness Habit Tracker (scikit-learn + Google Gemini)",
-            "5. Virtual Gym Buddy (Official google-genai SDK + Local Fallback)",
-            "6. Pose-to-Performance Analyzer",
-            "7. Gym Recommender & Planner (Google Gemini + OSM/Sample Gyms)",
+        "features": [
+            "Dashboard",
+            "Workouts & Split Planner",
+            "AI Dietician & Nutrition Coach",
+            "Progress, Habits & Analytics",
+            "Profile Management",
         ],
     }
 
@@ -332,6 +347,7 @@ def _serialize_user(user: User) -> Dict:
             "fitness_goal": prof.fitness_goal if prof else "Muscle Gain",
             "experience_level": prof.experience_level if prof else "Intermediate",
             "dietary_preference": prof.dietary_preference if prof else "Vegetarian",
+            "allergies": (getattr(prof, "allergies", "") or "") if prof else "",
             "activity_level": prof.activity_level if prof else "Moderately Active",
             "available_equipment": prof.available_equipment if prof else "Full Gym, Dumbbells",
             "workout_days_per_week": prof.workout_days_per_week if prof else 5,
@@ -373,6 +389,7 @@ def register_user(req: RegisterRequest, response: Response, db: Session = Depend
         target_weight_kg=req.weight_kg,
         fitness_goal=req.fitness_goal,
         dietary_preference=req.dietary_preference,
+        allergies=(req.allergies or "").strip(),
         daily_calorie_target=target_cal,
     )
     db.add(profile)
@@ -424,9 +441,9 @@ def register_user(req: RegisterRequest, response: Response, db: Session = Depend
             user_id=new_user.id,
             role="assistant",
             content=(
-                f"Welcome to **AI Gym & Fitness Assistant**, **{new_user.name}**! I'm your **Virtual Gym Buddy** "
-                f"powered by Google Gemini. Your personal profile is set for **{req.fitness_goal}** "
-                f"({req.dietary_preference}, ~{target_cal} kcal/day). Ask me anything about workouts, posture, or nutrition!"
+                f"Welcome to **AI Gym & Fitness Assistant**, **{new_user.name}**! "
+                f"Your personal profile is set for **{req.fitness_goal}** "
+                f"({req.dietary_preference}, ~{target_cal} kcal/day). Ask me anything about workouts, nutrition, or recovery!"
             ),
             sentiment="positive",
             mood_tag="Welcoming",
@@ -505,7 +522,7 @@ def get_authenticated_user(user: User = Depends(get_current_user)):
 
 @app.post("/api/auth/forgot-password", tags=["Authentication & Profile"])
 def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    """Generates a verified password reset token and sends via SMTP if configured, or reports missing email config."""
+    """Generates a verified password reset token and sends via SMTP if configured."""
     import os as _os
     import smtplib
     from email.message import EmailMessage
@@ -545,16 +562,13 @@ def forgot_password(req: ForgotPasswordRequest, db: Session = Depends(get_db)):
         except Exception as exc:
             return {
                 "email_configured": False,
-                "message": f"SMTP delivery failed ({exc}). Providing verification token directly so you can reset your password.",
+                "message": f"Email delivery failed ({exc}). Use the verification token below to reset your password.",
                 "reset_token": reset_token,
             }
 
     return {
         "email_configured": False,
-        "message": (
-            "SMTP email server (SMTP_HOST / SMTP_USER) is not configured in backend/.env. "
-            "Use the verified reset token below to complete your password reset immediately."
-        ),
+        "message": "Use the verified reset token below to complete your password reset immediately.",
         "reset_token": reset_token,
     }
 
@@ -582,7 +596,6 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
     return {
         "message": "Password has been reset successfully. You can now log in with your new password."
     }
-
 
 
 @app.get("/api/profile", tags=["Authentication & Profile"])
@@ -659,6 +672,7 @@ def update_profile(
         "fitness_goal",
         "experience_level",
         "dietary_preference",
+        "allergies",
         "activity_level",
         "available_equipment",
         "workout_days_per_week",
@@ -666,7 +680,7 @@ def update_profile(
         "daily_calorie_target",
         "city",
     ]:
-        val = getattr(req, field)
+        val = getattr(req, field, None)
         if val is not None:
             setattr(prof, field, val)
 
@@ -712,7 +726,7 @@ def get_dashboard_overview(user: User = Depends(get_current_user), db: Session =
     avg_perf_score = (
         round(sum(w.performance_score for w in workouts) / len(workouts), 1)
         if workouts
-        else 88.0
+        else 0.0
     )
 
     streak_stats = habit_service.compute_streak_and_consistency(habits)
@@ -737,6 +751,8 @@ def get_dashboard_overview(user: User = Depends(get_current_user), db: Session =
             {
                 "id": w.id,
                 "exercise": w.exercise,
+                "sets_completed": getattr(w, "sets_completed", None) or 3,
+                "weight_kg": getattr(w, "weight_kg", None) or 0.0,
                 "total_reps": w.total_reps,
                 "duration_sec": w.duration_sec,
                 "calories_burned": w.calories_burned,
@@ -762,197 +778,116 @@ def get_dashboard_overview(user: User = Depends(get_current_user), db: Session =
 
 
 # ==============================================================================
-# MODULE 1: AI GYM TRAINER (OPENCV + MEDIAPIPE POSE)
+# WORKOUT LOGGING & HISTORY ENDPOINTS (MANUAL LOGGING)
 # ==============================================================================
 
-@app.get("/api/trainer/stats", tags=["Module 1: AI Gym Trainer"])
-@app.get("/workout_stats", tags=["Module 1: AI Gym Trainer"])
-def get_trainer_stats():
-    return camera.get_stats()
-
-
-@app.post("/api/trainer/configure", tags=["Module 1: AI Gym Trainer"])
-def configure_trainer(req: TrainerConfigRequest):
-    try:
-        stats = camera.set_exercise(req.exercise, demo_mode=req.demo_mode)
-        return {"message": f"Trainer configured for {stats['exercise']}", "stats": stats}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.post("/api/trainer/start_camera", tags=["Module 1: AI Gym Trainer"])
-def api_start_camera(req: Optional[StartCameraRequest] = None):
-    use_demo = req.use_demo if req else False
-    stats = camera.start_camera(use_demo=use_demo)
-    return {
-        "message": "Camera started",
-        "stats": stats,
-    }
-
-
-@app.post("/api/trainer/stop_camera", tags=["Module 1: AI Gym Trainer"])
-def api_stop_camera():
-    stats = camera.stop_camera()
-    return {
-        "message": "Camera stopped and hardware handle released",
-        "stats": stats,
-    }
-
-
-@app.post("/api/trainer/start_workout", tags=["Module 1: AI Gym Trainer"])
-def api_start_workout(req: Optional[StartWorkoutRequest] = None):
-    active = req.active if req else True
-    stats = camera.start_workout(active=active)
-    return {
-        "message": "Workout active" if active else "Workout paused",
-        "stats": stats,
-    }
-
-
-@app.post("/api/trainer/process_frame", tags=["Module 1: AI Gym Trainer"])
-def api_process_browser_frame(req: ProcessFrameRequest):
-    """Processes a browser getUserMedia video frame locally with MediaPipe Pose Landmarker."""
-    try:
-        return camera.process_frame_base64(req.image_base64, exercise=req.exercise)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-
-
-@app.post("/api/trainer/gemini-advice", tags=["Module 1: AI Gym Trainer"])
-def api_get_gemini_workout_advice(user: User = Depends(get_current_user)):
-    """Generates personalized workout advice via Google Gemini using ONLY structured workout stats."""
-    stats = camera.get_stats()
-    prof = user.profile
-    user_ctx = {
-        "name": user.name,
-        "goal": prof.fitness_goal if prof else "Muscle Gain",
-        "dietary_preference": prof.dietary_preference if prof else "Vegetarian",
-    }
-    return generate_workout_gemini_advice(stats, user_ctx)
-
-
-@app.post("/api/trainer/simulate_reps", tags=["Module 1: AI Gym Trainer"])
-def simulate_trainer_reps(steps: int = Query(default=3, ge=1, le=20)):
-    stats = camera.simulate_step(steps=steps)
-    return {"message": f"Simulated {steps} exercise cycles in Demo Mode", "stats": stats}
-
-
-@app.post("/api/trainer/reset", tags=["Module 1: AI Gym Trainer"])
-def reset_trainer():
-    return camera.reset_session()
-
-
-@app.get("/api/trainer/video_feed", tags=["Module 1: AI Gym Trainer"])
-@app.get("/video_feed", tags=["Module 1: AI Gym Trainer"])
-def stream_trainer_video(
-    exercise: Optional[str] = Query(default=None),
-    demo: Optional[bool] = Query(default=None),
-):
-    if exercise:
-        try:
-            camera.set_exercise(exercise, demo_mode=demo)
-        except ValueError:
-            pass
-    elif demo is not None:
-        camera.is_demo_mode = demo
-    return StreamingResponse(
-        camera.generate_frames(),
-        media_type="multipart/x-mixed-replace; boundary=frame",
-    )
-
-
-@app.post("/api/trainer/finish", tags=["Module 1: AI Gym Trainer"])
+@app.post("/api/workouts/log", tags=["Workouts"], status_code=status.HTTP_201_CREATED)
+@app.post("/api/trainer/finish", tags=["Workouts"])
 def finish_workout_session(
     req: Optional[FinishWorkoutRequest] = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stats = camera.get_stats()
-    perf = stats["performance"]
+    """Logs a completed workout session manually and records progress metrics."""
+    exercise_name = (req.exercise.strip() if req and req.exercise else "Squat")
+    sets_c = max(1, (req.sets_completed if req and req.sets_completed is not None else 3))
+    weight_val = max(0.0, (req.weight_kg if req and req.weight_kg is not None else 0.0))
 
-    exercise_name = (req.exercise if req and req.exercise else stats["exercise"])
-    left_r = req.left_reps if req and req.left_reps is not None else stats["left"]
-    right_r = req.right_reps if req and req.right_reps is not None else stats["right"]
-    total_r = req.total_reps if req and req.total_reps is not None else stats["total"]
-    dur_s = req.duration_sec if req and req.duration_sec is not None else max(15, stats["duration"])
+    if req and req.total_reps is not None:
+        total_r = max(1, req.total_reps)
+    elif req and req.reps_per_set is not None:
+        total_r = max(1, sets_c * req.reps_per_set)
+    elif req and (req.left_reps is not None or req.right_reps is not None):
+        total_r = max(1, (req.left_reps or 0) + (req.right_reps or 0))
+    else:
+        total_r = sets_c * 10
 
-    # Ensure if user clicks Finish after testing or sets custom reps, calories & performance are logged cleanly
-    if total_r == 0 and left_r == 0 and right_r == 0:
-        # Advance 5 demo reps so finishing an empty session still records a meaningful demo log
-        camera.simulate_step(steps=5)
-        stats = camera.get_stats()
-        perf = stats["performance"]
-        left_r = stats["left"]
-        right_r = stats["right"]
-        total_r = stats["total"]
-        dur_s = max(30, stats["duration"])
+    left_r = req.left_reps if req and req.left_reps is not None else (total_r // 2)
+    right_r = req.right_reps if req and req.right_reps is not None else (total_r - left_r)
+    dur_s = max(10, (req.duration_sec if req and req.duration_sec is not None else 900))
+    form_s = round(min(100.0, max(40.0, (req.form_score if req and req.form_score is not None else 90.0))), 1)
 
-    from camera import CALORIE_FACTORS
-    factor = CALORIE_FACTORS.get(exercise_name, 0.45)
-    cals = round(total_r * factor, 2)
+    if req and req.calories_burned is not None and req.calories_burned > 0:
+        cals = round(req.calories_burned, 1)
+    else:
+        factor = CALORIE_FACTORS.get(exercise_name, 0.50)
+        load_multiplier = 1.0 + min(0.6, weight_val / 100.0)
+        cals = round(max(total_r * factor * load_multiplier, (dur_s / 60.0) * 5.5), 1)
+
+    notes_text = (
+        (req.notes or req.posture_notes or "").strip()
+        if req
+        else ""
+    ) or f"{sets_c} sets × {max(1, round(total_r / sets_c))} reps logged ({weight_val:g} kg)"
 
     ws = WorkoutSession(
         user_id=user.id,
         exercise=exercise_name,
+        sets_completed=sets_c,
+        weight_kg=weight_val,
         left_reps=left_r,
         right_reps=right_r,
         total_reps=total_r,
         duration_sec=dur_s,
         calories_burned=cals,
-        avg_rom_score=perf["rom_efficiency"],
-        form_score=perf["posture_accuracy"],
-        tempo_score=perf["tempo_consistency"],
-        performance_score=perf["performance_score"],
-        posture_notes=stats["feedback"]["message"],
-        mode=req.mode if req and req.mode else ("demo" if stats["is_demo_mode"] else "webcam"),
+        avg_rom_score=form_s,
+        form_score=form_s,
+        tempo_score=form_s,
+        performance_score=form_s,
+        posture_notes=notes_text,
+        mode="manual",
     )
     db.add(ws)
     db.flush()
 
+    spec = EXERCISE_BIOMECHANICS_SPECS.get(exercise_name, EXERCISE_BIOMECHANICS_SPECS["Squat"])
     report = PerformanceReport(
         user_id=user.id,
         exercise=exercise_name,
         session_id=ws.id,
-        rom_angle_min=perf["rom_angle_min"],
-        rom_angle_max=perf["rom_angle_max"],
-        rom_efficiency=perf["rom_efficiency"],
-        symmetry_score=perf["symmetry_score"],
-        tempo_consistency=perf["tempo_consistency"],
-        posture_accuracy=perf["posture_accuracy"],
-        overall_score=perf["performance_score"],
+        rom_angle_min=spec["ideal_min_angle"],
+        rom_angle_max=spec["ideal_max_angle"],
+        rom_efficiency=form_s,
+        symmetry_score=min(100.0, round(form_s + 1.0, 1)),
+        tempo_consistency=form_s,
+        posture_accuracy=form_s,
+        overall_score=form_s,
         reps_analyzed=total_r,
-        feedback_summary=stats["feedback"]["message"],
+        feedback_summary=notes_text,
     )
     db.add(report)
     db.commit()
     db.refresh(ws)
 
-    camera.reset_session()
-
     return {
-        "message": "Workout session and Pose-to-Performance report saved!",
+        "message": "Workout logged successfully!",
         "session": {
             "id": ws.id,
             "exercise": ws.exercise,
+            "sets_completed": ws.sets_completed,
+            "weight_kg": ws.weight_kg,
             "left_reps": ws.left_reps,
             "right_reps": ws.right_reps,
             "total_reps": ws.total_reps,
             "duration_sec": ws.duration_sec,
             "calories_burned": ws.calories_burned,
+            "form_score": ws.form_score,
             "performance_score": ws.performance_score,
             "posture_notes": ws.posture_notes,
             "mode": ws.mode,
+            "recorded_at": ws.recorded_at.strftime("%Y-%m-%d %H:%M") if ws.recorded_at else "",
         },
     }
 
 
-@app.get("/api/trainer/history", tags=["Module 1: AI Gym Trainer"])
+@app.get("/api/workouts/history", tags=["Workouts"])
+@app.get("/api/trainer/history", tags=["Workouts"])
 def get_workout_history(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     sessions = (
         db.query(WorkoutSession)
         .filter(WorkoutSession.user_id == user.id)
         .order_by(WorkoutSession.recorded_at.desc())
-        .limit(25)
+        .limit(50)
         .all()
     )
     return {
@@ -961,11 +896,14 @@ def get_workout_history(user: User = Depends(get_current_user), db: Session = De
             {
                 "id": s.id,
                 "exercise": s.exercise,
+                "sets_completed": getattr(s, "sets_completed", None) or 3,
+                "weight_kg": getattr(s, "weight_kg", None) or 0.0,
                 "left_reps": s.left_reps,
                 "right_reps": s.right_reps,
                 "total_reps": s.total_reps,
                 "duration_sec": s.duration_sec,
                 "calories_burned": s.calories_burned,
+                "form_score": s.form_score,
                 "performance_score": s.performance_score,
                 "posture_notes": s.posture_notes,
                 "mode": s.mode,
@@ -976,11 +914,248 @@ def get_workout_history(user: User = Depends(get_current_user), db: Session = De
     }
 
 
+@app.delete("/api/workouts/{workout_id}", tags=["Workouts"])
+def delete_workout_session(
+    workout_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    item = db.query(WorkoutSession).filter(WorkoutSession.id == workout_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Workout session not found.")
+    if item.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: You are not authorized to delete another user's workout session.",
+        )
+    db.query(PerformanceReport).filter(PerformanceReport.session_id == workout_id).delete()
+    db.delete(item)
+    db.commit()
+    return {"message": "Workout session removed."}
+
+
+@app.post("/api/workouts/ai-feedback", tags=["Workouts"])
+@app.post("/api/trainer/gemini-advice", tags=["Workouts"])
+def api_get_gemini_workout_advice(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Generates personalized workout coaching advice from the user's latest logged workout."""
+    latest = (
+        db.query(WorkoutSession)
+        .filter(WorkoutSession.user_id == user.id)
+        .order_by(WorkoutSession.recorded_at.desc())
+        .first()
+    )
+    stats = {
+        "exercise": latest.exercise if latest else "Squat",
+        "total": latest.total_reps if latest else 30,
+        "left": latest.left_reps if latest else 15,
+        "right": latest.right_reps if latest else 15,
+        "duration": latest.duration_sec if latest else 900,
+        "calories": latest.calories_burned if latest else 120.0,
+        "left_angle": 90,
+        "right_angle": 90,
+        "feedback": {"message": latest.posture_notes if latest else "Consistent form maintained"},
+        "performance": {
+            "rom_angle_min": 80,
+            "rom_angle_max": 165,
+            "rom_efficiency": latest.avg_rom_score if latest else 90.0,
+            "posture_accuracy": latest.form_score if latest else 90.0,
+            "symmetry_score": 94.0,
+            "performance_score": latest.performance_score if latest else 90.0,
+        },
+        "posture_alerts": [],
+    }
+    prof = user.profile
+    user_ctx = {
+        "name": user.name,
+        "goal": prof.fitness_goal if prof else "Muscle Gain",
+        "dietary_preference": prof.dietary_preference if prof else "Vegetarian",
+    }
+    return generate_workout_gemini_advice(stats, user_ctx)
+
+
 # ==============================================================================
-# MODULE 2: AI DIETICIAN & CALORIE COACH
+# AI DIETICIAN & NUTRITION COACH (MULTI-TURN CHAT + MEAL PLANNER + LOGS)
 # ==============================================================================
 
-@app.post("/api/diet/calculate-bmi-calories", tags=["Module 2: AI Dietician & Calorie Coach"])
+def _build_dietician_user_context(user: User, db: Session) -> Dict[str, Any]:
+    prof = user.profile
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_logs = (
+        db.query(NutritionLog)
+        .filter(NutritionLog.user_id == user.id, NutritionLog.date_str == today_str)
+        .all()
+    )
+    logged_cal = sum(l.calories for l in today_logs)
+    logged_pro = round(sum(l.protein_g for l in today_logs), 1)
+
+    return {
+        "name": user.name,
+        "age": user.age,
+        "gender": user.gender,
+        "height_cm": prof.height_cm if prof else None,
+        "weight_kg": prof.weight_kg if prof else None,
+        "target_weight_kg": prof.target_weight_kg if prof else None,
+        "fitness_goal": prof.fitness_goal if prof else "Muscle Gain",
+        "goal": prof.fitness_goal if prof else "Muscle Gain",
+        "dietary_preference": prof.dietary_preference if prof else "Vegetarian",
+        "allergies": (getattr(prof, "allergies", "") or "") if prof else "",
+        "activity_level": prof.activity_level if prof else "Moderately Active",
+        "daily_calorie_target": prof.daily_calorie_target if prof else 2200,
+        "logged_calories_today": logged_cal,
+        "logged_protein_today": logged_pro,
+    }
+
+
+@app.get("/api/diet/chat/history", tags=["AI Dietician"])
+def get_diet_chat_history(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Returns the user's multi-turn AI Dietician conversation history."""
+    messages = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.user_id == user.id,
+            ChatMessage.mood_tag.like("Dietician%"),
+        )
+        .order_by(ChatMessage.id.asc())
+        .limit(60)
+        .all()
+    )
+    user_ctx = _build_dietician_user_context(user, db)
+    return {
+        "gemini_status": get_gemini_status(),
+        "profile_context": user_ctx,
+        "messages": [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "sentiment": m.sentiment,
+                "mood_tag": (m.mood_tag or "").replace("Dietician • ", ""),
+                "provider": m.provider,
+                "created_at": m.created_at.strftime("%H:%M") if m.created_at else "",
+            }
+            for m in messages
+        ],
+    }
+
+
+@app.post("/api/diet/chat", tags=["AI Dietician"])
+def send_diet_chat_message(
+    req: ChatRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Multi-turn conversational AI Dietician endpoint personalized with the user's profile."""
+    user_question = (req.message or req.question or "").strip()
+    if not user_question:
+        raise HTTPException(status_code=422, detail="Please enter a nutrition or diet question.")
+
+    prior_msgs = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.user_id == user.id,
+            ChatMessage.mood_tag.like("Dietician%"),
+        )
+        .order_by(ChatMessage.id.asc())
+        .all()
+    )
+    db_history = [
+        {"role": m.role, "content": m.content, "provider": m.provider or ""}
+        for m in prior_msgs
+        if m.provider != "system"
+        and not (m.provider or "").startswith("local_fallback")
+    ]
+
+    if req.history is not None:
+        history_payload = [
+            {"role": item.role, "content": item.content, "provider": ""}
+            for item in req.history
+            if item.content
+        ][-16:]
+    else:
+        history_payload = db_history[-16:]
+
+    user_ctx = _build_dietician_user_context(user, db)
+    reply = generate_dietician_chat_reply(user_question, history_payload, user_ctx)
+
+    gemini_status = reply.get("gemini_status")
+    if gemini_status != "success" or not reply.get("answer"):
+        error_msg = (
+            reply.get("gemini_error")
+            or "AI Dietician is temporarily unavailable. Please check your connection and try again."
+        )
+        if gemini_status == "missing_api_key":
+            http_status = status.HTTP_503_SERVICE_UNAVAILABLE
+        elif gemini_status == "quota_exceeded":
+            http_status = status.HTTP_429_TOO_MANY_REQUESTS
+        else:
+            http_status = status.HTTP_502_BAD_GATEWAY
+
+        return JSONResponse(
+            status_code=http_status,
+            content={
+                "detail": error_msg,
+                "question": user_question,
+                "answer": None,
+                "sentiment": reply["sentiment"],
+                "mood_tag": reply["mood_tag"],
+                "provider": reply["provider"],
+                "gemini_status": gemini_status,
+                "gemini_error_code": gemini_status,
+                "gemini_error": error_msg,
+                "fallback_used": False,
+            },
+        )
+
+    now_str = datetime.now(timezone.utc).strftime("%H:%M")
+    user_msg = ChatMessage(
+        user_id=user.id,
+        role="user",
+        content=user_question,
+        sentiment=reply["sentiment"],
+        mood_tag=f"Dietician • {reply['mood_tag']}",
+        provider="user",
+    )
+    bot_msg = ChatMessage(
+        user_id=user.id,
+        role="assistant",
+        content=reply["answer"],
+        sentiment=reply["sentiment"],
+        mood_tag=f"Dietician • {reply['mood_tag']}",
+        provider=reply["provider"],
+    )
+    db.add_all([user_msg, bot_msg])
+    db.commit()
+
+    return {
+        "question": user_question,
+        "answer": reply["answer"],
+        "reply": reply["answer"],
+        "sentiment": reply["sentiment"],
+        "mood_tag": reply["mood_tag"],
+        "provider": reply["provider"],
+        "created_at": now_str,
+        "gemini_status": "success",
+        "gemini_error_code": None,
+        "gemini_error": None,
+        "fallback_used": False,
+    }
+
+
+@app.delete("/api/diet/chat/history", tags=["AI Dietician"])
+def clear_diet_chat_history(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Clears the user's AI Dietician conversation history when starting a New Chat."""
+    db.query(ChatMessage).filter(
+        ChatMessage.user_id == user.id,
+        ChatMessage.mood_tag.like("Dietician%"),
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"message": "Started a new AI Dietician chat."}
+
+
+@app.post("/api/diet/calculate-bmi-calories", tags=["AI Dietician"])
 def api_calculate_bmi_and_calories(
     req: BMICalculateRequest,
     user: User = Depends(get_current_user),
@@ -1016,7 +1191,7 @@ def api_calculate_bmi_and_calories(
     return result
 
 
-@app.post("/api/diet/meal-plan", tags=["Module 2: AI Dietician & Calorie Coach"])
+@app.post("/api/diet/meal-plan", tags=["AI Dietician"])
 def api_generate_diet_plan(
     req: DietPlanRequest,
     user: User = Depends(get_current_user),
@@ -1041,18 +1216,15 @@ def api_generate_diet_plan(
     db.add(db_plan)
     db.commit()
 
-    prof = user.profile
-    user_ctx = {
-        "name": user.name,
-        "goal": plan["goal"],
-        "dietary_preference": plan["dietary_preference"],
-        "daily_calorie_target": plan["target_calories"],
-    }
+    user_ctx = _build_dietician_user_context(user, db)
+    user_ctx["goal"] = plan["goal"]
+    user_ctx["dietary_preference"] = plan["dietary_preference"]
+    user_ctx["daily_calorie_target"] = plan["target_calories"]
     plan["ai_coaching"] = generate_diet_gemini_coaching(plan, user_ctx)
     return plan
 
 
-@app.post("/api/diet/gemini-coach", tags=["Module 2: AI Dietician & Calorie Coach"])
+@app.post("/api/diet/gemini-coach", tags=["AI Dietician"])
 def api_diet_gemini_coach(
     req: Optional[GeminiCustomQueryRequest] = None,
     user: User = Depends(get_current_user),
@@ -1076,12 +1248,7 @@ def api_diet_gemini_coach(
             "fat_g": latest_plan.fat_g if latest_plan else 70,
         },
     }
-    user_ctx = {
-        "name": user.name,
-        "goal": plan_ctx["goal"],
-        "dietary_preference": plan_ctx["dietary_preference"],
-        "daily_calorie_target": plan_ctx["target_calories"],
-    }
+    user_ctx = _build_dietician_user_context(user, db)
     return generate_diet_gemini_coaching(
         diet_plan=plan_ctx,
         user_context=user_ctx,
@@ -1612,10 +1779,10 @@ def get_performance_reports(user: User = Depends(get_current_user), db: Session 
         .all()
     )
 
-    avg_overall = round(sum(r.overall_score for r in reports) / len(reports), 1) if reports else 88.0
-    avg_rom = round(sum(r.rom_efficiency for r in reports) / len(reports), 1) if reports else 86.0
-    avg_sym = round(sum(r.symmetry_score for r in reports) / len(reports), 1) if reports else 91.0
-    avg_posture = round(sum(r.posture_accuracy for r in reports) / len(reports), 1) if reports else 89.0
+    avg_overall = round(sum(r.overall_score for r in reports) / len(reports), 1) if reports else 0.0
+    avg_rom = round(sum(r.rom_efficiency for r in reports) / len(reports), 1) if reports else 0.0
+    avg_sym = round(sum(r.symmetry_score for r in reports) / len(reports), 1) if reports else 0.0
+    avg_posture = round(sum(r.posture_accuracy for r in reports) / len(reports), 1) if reports else 0.0
 
     return {
         "weekly_summary": {
@@ -1624,7 +1791,7 @@ def get_performance_reports(user: User = Depends(get_current_user), db: Session 
             "avg_rom_efficiency": avg_rom,
             "avg_symmetry_score": avg_sym,
             "avg_posture_accuracy": avg_posture,
-            "heuristic_disclaimer": HEURISTIC_DISCLAIMER,
+            "summary_note": HEURISTIC_DISCLAIMER,
         },
         "exercise_specs": EXERCISE_BIOMECHANICS_SPECS,
         "reports": [

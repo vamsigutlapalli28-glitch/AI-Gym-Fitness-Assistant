@@ -193,6 +193,7 @@ class FitnessProfile(Base):
     preferred_workout_time = Column(String(40), default="18:00")
     daily_calorie_target = Column(Integer, default=2400)
     city = Column(String(100), default="Bengaluru")
+    allergies = Column(String(255), default="")
     updated_at = Column(
         DateTime(timezone=True),
         default=utcnow,
@@ -214,6 +215,8 @@ class WorkoutSession(Base):
         index=True,
     )
     exercise = Column(String(80), nullable=False)
+    sets_completed = Column(Integer, default=3)
+    weight_kg = Column(Float, default=0.0)
     left_reps = Column(Integer, default=0)
     right_reps = Column(Integer, default=0)
     total_reps = Column(Integer, nullable=False)
@@ -224,7 +227,7 @@ class WorkoutSession(Base):
     tempo_score = Column(Float, default=84.0)
     performance_score = Column(Float, default=86.0)
     posture_notes = Column(Text, default="Good form maintained")
-    mode = Column(String(30), default="webcam")
+    mode = Column(String(30), default="manual")
     recorded_at = Column(
         DateTime(timezone=True),
         default=utcnow,

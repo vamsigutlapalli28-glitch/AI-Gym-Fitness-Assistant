@@ -9,7 +9,6 @@ import {
   Gauge,
   MapPin,
   UserCircle,
-  ExternalLink,
   Menu,
   X,
   Activity,
@@ -27,16 +26,22 @@ import PerformanceTab from './components/PerformanceTab';
 import PlannerTab from './components/PlannerTab';
 import ProfileModal from './components/ProfileModal';
 
-const NAV_ITEMS = [
-  { id: 'overview', label: 'Command Overview', icon: LayoutDashboard },
-  { id: 'trainer', label: 'AI Gym Trainer', icon: Dumbbell },
-  { id: 'diet', label: 'AI Dietician Coach', icon: Utensils },
-  { id: 'iot', label: 'Smart Gym IoT + MQTT', icon: Cpu },
-  { id: 'habits', label: 'Habit & ML Tracker', icon: CalendarCheck },
-  { id: 'buddy', label: 'Virtual Gym Buddy', icon: MessageSquareHeart },
-  { id: 'performance', label: 'Pose-to-Performance', icon: Gauge },
-  { id: 'planner', label: 'Gym & Split Planner', icon: MapPin },
+const PRIMARY_NAV_ITEMS = [
+  { id: 'overview', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'trainer', label: 'Workouts', icon: Dumbbell },
+  { id: 'diet', label: 'AI Dietician', icon: Utensils },
+  { id: 'performance', label: 'Progress', icon: Gauge },
+  { id: 'profile', label: 'Profile', icon: UserCircle },
 ];
+
+const ADDITIONAL_NAV_ITEMS = [
+  { id: 'planner', label: 'Split & Gym Finder', icon: MapPin },
+  { id: 'habits', label: 'Habit Tracker', icon: CalendarCheck },
+  { id: 'buddy', label: 'Virtual Gym Buddy', icon: MessageSquareHeart },
+  { id: 'iot', label: 'Smart Equipment', icon: Cpu },
+];
+
+const ALL_NAV_ITEMS = [...PRIMARY_NAV_ITEMS, ...ADDITIONAL_NAV_ITEMS];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -120,10 +125,12 @@ export default function App() {
     return <AuthPage onAuthenticated={handleAuthenticated} />;
   }
 
+  const activeNavItem = ALL_NAV_ITEMS.find((n) => n.id === activeTab) || PRIMARY_NAV_ITEMS[0];
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex">
       {/* Sidebar (Desktop) */}
-      <aside className="hidden lg:flex lg:w-68 lg:flex-col lg:fixed lg:inset-y-0 border-r border-slate-800/80 bg-slate-900/90 backdrop-blur-xl z-30">
+      <aside className="hidden lg:flex lg:w-68 lg:flex-col lg:fixed lg:inset-y-0 border-r border-slate-800/80 bg-slate-900/95 backdrop-blur-xl z-30">
         <div className="p-5 border-b border-slate-800/80 flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-emerald-500/20">
             <Activity className="w-6 h-6" />
@@ -133,35 +140,61 @@ export default function App() {
               AI GYM ASSISTANT
             </div>
             <div className="text-[11px] font-semibold text-emerald-400">
-              AI Fitness Command Center
+              Fitness &amp; Nutrition Platform
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const active = activeTab === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-bold transition cursor-pointer ${
-                  active
-                    ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
+        <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+          <div className="space-y-1">
+            {PRIMARY_NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2.5 text-xs font-bold transition cursor-pointer ${
+                    active
+                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
+                      : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pt-2 border-t border-slate-800/80 space-y-1">
+            <div className="px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              Tools &amp; Coaching
+            </div>
+            {ADDITIONAL_NAV_ITEMS.map((item) => {
+              const Icon = item.icon;
+              const active = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-2.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition cursor-pointer ${
+                    active
+                      ? 'bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20'
+                      : 'text-slate-400 hover:bg-slate-800/80 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </nav>
 
         <div className="p-4 border-t border-slate-800/80 space-y-2.5">
           <button
-            onClick={() => setShowProfileModal(true)}
+            onClick={() => setActiveTab('profile')}
             className="w-full flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-950/80 hover:border-slate-700 p-3 text-left transition cursor-pointer"
           >
             <UserCircle className="w-8 h-8 text-emerald-400 shrink-0" />
@@ -170,28 +203,18 @@ export default function App() {
                 {user?.name || 'Athlete'}
               </div>
               <div className="text-[10px] text-slate-400 truncate">
-                {user?.profile?.fitness_goal || 'Muscle Gain'} • Edit Profile
+                {user?.profile?.fitness_goal || 'Muscle Gain'} •{' '}
+                {user?.profile?.dietary_preference || 'Vegetarian'}
               </div>
             </div>
           </button>
 
-          <div className="grid grid-cols-2 gap-2">
-            <a
-              href="http://127.0.0.1:8000/docs"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-800 bg-slate-950/60 hover:bg-slate-800 py-2 text-[11px] font-semibold text-cyan-300 transition"
-            >
-              API Docs <ExternalLink className="w-3 h-3" />
-            </a>
-
-            <button
-              onClick={handleLogout}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 py-2 text-[11px] font-bold text-rose-300 transition cursor-pointer"
-            >
-              <LogOut className="w-3 h-3" /> Logout
-            </button>
-          </div>
+          <button
+            onClick={handleLogout}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 py-2 text-xs font-bold text-rose-300 transition cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" /> Sign Out
+          </button>
         </div>
       </aside>
 
@@ -208,17 +231,17 @@ export default function App() {
             </button>
             <div>
               <h1 className="text-sm sm:text-base font-extrabold text-white">
-                {NAV_ITEMS.find((n) => n.id === activeTab)?.label}
+                {activeNavItem.label}
               </h1>
               <p className="text-[11px] text-slate-400 hidden sm:block">
-                AI Gym &amp; Fitness Assistant • Real-Time Vision, Nutrition, IoT, ML Habits &amp; Biomechanics
+                AI Gym &amp; Fitness Assistant • Personalized Workouts, Nutrition &amp; Progress Tracking
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2.5">
             <button
-              onClick={() => setShowProfileModal(true)}
+              onClick={() => setActiveTab('profile')}
               className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer"
             >
               <UserCircle className="w-4 h-4 text-emerald-400" />
@@ -230,7 +253,7 @@ export default function App() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 px-3 py-1.5 text-xs font-bold text-rose-300 cursor-pointer"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Logout</span>
+              <span className="hidden sm:inline">Sign Out</span>
             </button>
           </div>
         </header>
@@ -238,7 +261,7 @@ export default function App() {
         {/* Mobile Drawer */}
         {mobileMenuOpen && (
           <div className="lg:hidden border-b border-slate-800 bg-slate-900 p-3 space-y-1">
-            {NAV_ITEMS.map((item) => {
+            {ALL_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               return (
                 <button
@@ -266,15 +289,30 @@ export default function App() {
           {activeTab === 'overview' && (
             <OverviewTab overview={overviewData} onNavigate={setActiveTab} />
           )}
-          {activeTab === 'trainer' && <TrainerTab onSessionSaved={fetchOverview} />}
+          {activeTab === 'trainer' && (
+            <TrainerTab user={user} onSessionSaved={fetchOverview} />
+          )}
           {activeTab === 'diet' && (
             <DieticianTab user={user} onUpdateOverview={fetchOverview} />
           )}
-          {activeTab === 'iot' && <SmartGymIoTTab />}
+          {activeTab === 'performance' && (
+            <PerformanceTab onUpdateOverview={fetchOverview} />
+          )}
+          {activeTab === 'profile' && (
+            <ProfileModal
+              user={user}
+              inlineMode={true}
+              onUserUpdated={(u) => {
+                setUser(u);
+                fetchOverview();
+              }}
+              onLogout={handleLogout}
+            />
+          )}
+          {activeTab === 'planner' && <PlannerTab user={user} />}
           {activeTab === 'habits' && <HabitTrackerTab onUpdateOverview={fetchOverview} />}
           {activeTab === 'buddy' && <GymBuddyTab />}
-          {activeTab === 'performance' && <PerformanceTab />}
-          {activeTab === 'planner' && <PlannerTab user={user} />}
+          {activeTab === 'iot' && <SmartGymIoTTab />}
         </main>
       </div>
 

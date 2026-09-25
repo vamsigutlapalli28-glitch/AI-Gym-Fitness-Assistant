@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Info,
   Sparkles,
 } from 'lucide-react';
 import { apiFetch } from '../api';
@@ -25,14 +24,14 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
   });
   const [prediction, setPrediction] = useState(null);
   const [logForm, setLogForm] = useState({
-    scheduled_workout: 'Upper Body Hypertrophy',
+    scheduled_workout: 'Upper Body Strength',
     completed: true,
     sleep_hours: 7.5,
     stress_level: 4,
     work_hours: 8.0,
     motivation_level: 8,
     water_liters: 2.5,
-    notes: 'Completed all compound sets on schedule',
+    notes: 'Completed scheduled sets with good energy',
   });
   const [scheduleForm, setScheduleForm] = useState({
     workout_days_per_week: 5,
@@ -78,9 +77,12 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
         }),
       });
       setPrediction(res);
-      const pct = res.adherence_percentage ?? res.adherence_probability_pct ?? Math.round((res.adherence_probability || 0.85) * 100);
+      const pct =
+        res.adherence_percentage ??
+        res.adherence_probability_pct ??
+        Math.round((res.adherence_probability || 0.85) * 100);
       setStatusMsg(
-        `ML Adherence Prediction: ${pct}% (${res.risk_level || res.risk_category || 'Evaluated'})`
+        `Updated Workout Readiness: ${pct}% (${res.risk_level || res.risk_category || 'Ready'})`
       );
     } catch (err) {
       setStatusMsg(err.message);
@@ -94,7 +96,7 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
         method: 'POST',
       });
       setGeminiMotivation(res);
-      setStatusMsg(`Received Gemini Fitness Motivation & Habit Guidance (${res.provider})!`);
+      setStatusMsg('Received personalized habit & recovery guidance!');
     } catch (err) {
       setStatusMsg(err.message);
     } finally {
@@ -117,7 +119,7 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
         }),
       });
       setPrediction(res.prediction);
-      setStatusMsg('Daily workout habit logged and streak recalculated!');
+      setStatusMsg('Daily workout habit logged and streak updated!');
       await loadHabitDashboard();
       if (onUpdateOverview) onUpdateOverview();
     } catch (err) {
@@ -135,7 +137,7 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
           preferred_workout_time: scheduleForm.preferred_workout_time,
         }),
       });
-      setStatusMsg('Workout schedule and smart reminder time updated!');
+      setStatusMsg('Workout schedule and reminder time updated!');
       await loadHabitDashboard();
     } catch (err) {
       setStatusMsg(err.message);
@@ -165,27 +167,21 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
 
   return (
     <div className="space-y-6">
-      {/* Synthetic Dataset Disclosure Banner */}
-      <div className="rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-purple-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-purple-100">
-            <span className="font-bold uppercase tracking-wider text-purple-300">
-              Scikit-Learn ML Model Note:{' '}
-            </span>
-            {prediction?.model_metadata?.data_source_label ||
-              prediction?.dataset_disclosure ||
-              'Trained using scikit-learn RandomForestClassifier on a synthetic behavioral fitness adherence dataset combined with your personal habit logs.'}
-          </div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-bold text-white">Habit Consistency &amp; Recovery Readiness</h3>
+          <p className="text-xs text-slate-400">
+            Track your daily sleep, hydration, stress, and workout streaks to stay consistent week after week.
+          </p>
         </div>
         <button
           type="button"
           onClick={handleAskGeminiMotivation}
           disabled={loadingMotivation}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-emerald-500 hover:from-purple-400 hover:to-emerald-400 disabled:opacity-50 text-slate-950 font-bold px-3.5 py-2 text-xs shrink-0 cursor-pointer shadow-md"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold px-4 py-2 text-xs shrink-0 cursor-pointer shadow-sm"
         >
           <Sparkles className="w-3.5 h-3.5" />
-          {loadingMotivation ? 'Consulting Gemini...' : 'Ask Gemini Habit Coach'}
+          {loadingMotivation ? 'Generating Tips...' : 'Get Habit Coaching Tips'}
         </button>
       </div>
 
@@ -202,10 +198,10 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
       )}
 
       {geminiMotivation && (
-        <div className="rounded-2xl border border-purple-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-purple-950/40 p-4 shadow-lg space-y-2">
+        <div className="rounded-2xl border border-emerald-500/30 bg-slate-900/90 p-4 shadow-lg space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4" /> Gemini Fitness Motivation &amp; Habit Guidance ({geminiMotivation.provider})
+            <span className="text-xs font-extrabold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4" /> Personalized Habit &amp; Consistency Guidance
             </span>
             <button
               onClick={() => setGeminiMotivation(null)}
@@ -214,13 +210,8 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
               Dismiss
             </button>
           </div>
-          {geminiMotivation.gemini_error && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-[11px] text-amber-200">
-              {geminiMotivation.gemini_error}
-            </div>
-          )}
           <p className="text-xs text-slate-200 whitespace-pre-line leading-relaxed">
-            {geminiMotivation.answer}
+            {geminiMotivation.motivation || geminiMotivation.answer}
           </p>
         </div>
       )}
@@ -249,25 +240,25 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
         </div>
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <span className="text-xs text-slate-400 flex items-center gap-1.5">
-            <BrainCircuit className="w-4 h-4 text-purple-400" /> ML Adherence Prob.
+            <BrainCircuit className="w-4 h-4 text-purple-400" /> Readiness Score
           </span>
           <div className="mt-1 text-2xl font-extrabold text-purple-300">{probPct}%</div>
           <div className="text-[11px] text-slate-400">
-            {prediction?.risk_level || prediction?.risk_category || 'High Adherence'}
+            {prediction?.risk_level || prediction?.risk_category || 'High Readiness'}
           </div>
         </div>
         <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-4">
           <span className="text-xs text-slate-400 flex items-center gap-1.5">
-            <Bell className="w-4 h-4 text-cyan-400" /> Smart Reminder
+            <Bell className="w-4 h-4 text-cyan-400" /> Training Schedule
           </span>
           <div className="mt-1 text-lg font-extrabold text-cyan-300">
             {scheduleForm.preferred_workout_time} ({scheduleForm.workout_days_per_week}d/wk)
           </div>
-          <div className="text-[11px] text-slate-400">Adaptive Schedule Active</div>
+          <div className="text-[11px] text-slate-400">Daily Reminder Active</div>
         </div>
       </div>
 
-      {/* ML Predictor Form + Feature Importance & Adaptive Recommendation */}
+      {/* Readiness Calculator + Schedule Editor */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <form
           onSubmit={handlePredict}
@@ -275,13 +266,13 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
         >
           <div>
             <span className="text-xs font-bold uppercase text-purple-400">
-              Scikit-Learn RandomForestClassifier
+              Daily Recovery &amp; Readiness Check
             </span>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <BrainCircuit className="w-5 h-5 text-purple-400" /> Workout Adherence Predictor
+              <BrainCircuit className="w-5 h-5 text-purple-400" /> Workout Adherence &amp; Readiness
             </h3>
             <p className="text-xs text-slate-400">
-              Simulate sleep, stress, work hours, and motivation to predict workout completion probability.
+              Adjust your sleep, stress, work hours, and hydration to evaluate today&apos;s training readiness.
             </p>
           </div>
 
@@ -373,19 +364,19 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
             type="submit"
             className="w-full rounded-xl bg-purple-500 hover:bg-purple-400 text-slate-950 font-bold py-2.5 text-xs transition cursor-pointer"
           >
-            Run Scikit-Learn Adherence Prediction
+            Calculate Today&apos;s Workout Readiness
           </button>
         </form>
 
-        {/* Prediction Insights & Feature Importance */}
+        {/* Readiness Breakdown */}
         <div className="lg:col-span-6 rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg flex flex-col justify-between space-y-4">
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase text-emerald-400">
-                AI Schedule Adjustment &amp; Feature Importance
+                Recommended Pacing &amp; Key Factors
               </span>
               <span className="rounded-full bg-purple-500/20 border border-purple-500/40 px-3 py-0.5 text-xs font-extrabold text-purple-300">
-                {probPct}% Adherence Likelihood
+                {probPct}% Readiness
               </span>
             </div>
             <p className="mt-2 text-sm font-semibold text-white">
@@ -398,7 +389,7 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
 
           <div className="space-y-2.5">
             <div className="text-xs font-bold uppercase text-slate-400">
-              RandomForest Feature Importance Weights
+              Key Consistency Drivers
             </div>
             {Object.entries(featureImportances).map(([feat, imp]) => {
               const pct = Math.round(imp * 100);
@@ -452,16 +443,16 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
               type="submit"
               className="rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-4 py-2 text-xs cursor-pointer"
             >
-              Save Reminder
+              Save Schedule
             </button>
           </form>
         </div>
       </div>
 
-      {/* Daily Check-In Logger + 14-Day Habit History */}
+      {/* Daily Check-In Logger + Habit History */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg space-y-4">
         <h3 className="text-base font-bold text-white flex items-center gap-2">
-          <Clock className="w-4 h-4 text-emerald-400" /> Log Today&apos;s Workout Habit Check-In
+          <Clock className="w-4 h-4 text-emerald-400" /> Log Today&apos;s Habit Check-In
         </h3>
         <form onSubmit={handleLogHabit} className="grid grid-cols-1 sm:grid-cols-6 gap-2.5">
           <input
@@ -477,7 +468,7 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
             className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
           >
             <option value="yes">Completed Workout</option>
-            <option value="no">Missed / Rest</option>
+            <option value="no">Missed / Rest Day</option>
           </select>
           <input
             type="text"
@@ -502,7 +493,7 @@ export default function HabitTrackerTab({ onUpdateOverview }) {
                 <th className="py-2 px-3">Scheduled Workout</th>
                 <th className="py-2 px-3">Status</th>
                 <th className="py-2 px-3">Sleep / Stress</th>
-                <th className="py-2 px-3">ML Adherence</th>
+                <th className="py-2 px-3">Readiness</th>
                 <th className="py-2 px-3">Notes</th>
               </tr>
             </thead>
