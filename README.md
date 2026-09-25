@@ -1,247 +1,142 @@
-![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![Flask](https://img.shields.io/badge/Flask-3.x-black)
-![MySQL](https://img.shields.io/badge/MySQL-Database-orange)
-![OpenCV](https://img.shields.io/badge/OpenCV-Computer%20Vision-green)
-![MediaPipe](https://img.shields.io/badge/MediaPipe-Pose-red)
-![License](https://img.shields.io/badge/License-MIT-yellow)
-# 🏋️ AI Gym Fitness Assistant
+# AI Gym & Fitness Assistant
 
-An AI-powered fitness web application built with Flask, MediaPipe, OpenCV, MySQL, and Groq LLM for real-time workout tracking, posture analysis, personalized diet recommendations, and AI-powered fitness coaching.
+[![License: MIT](https://img.shields.io/badge/License-MIT-emerald.svg)](LICENSE)
+[![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%2B%20SQLAlchemy-009688.svg)](backend/main.py)
+[![Vision: MediaPipe + OpenCV](https://img.shields.io/badge/Vision-MediaPipe%20%2B%20OpenCV-blue.svg)](camera.py)
+[![ML: Scikit-Learn](https://img.shields.io/badge/ML-Scikit--Learn%20RandomForest-purple.svg)](backend/services/habit_service.py)
+[![Frontend: React + Vite + Tailwind](https://img.shields.io/badge/Frontend-React%2018%20%2B%20Tailwind%20v4-cyan.svg)](frontend/)
 
-This system tracks workout form in real time, recommends personalized nutrition plans, provides AI-powered posture feedback, stores workout history, and serves users through a responsive dark-mode interface.
+A complete, modular, runnable full-stack **AI Gym & Fitness Assistant** application. It integrates real-time computer vision pose estimation, nutritional biometrics, IoT MQTT equipment telemetry, machine-learning habit adherence prediction, sentiment-aware conversational coaching, biomechanical Pose-to-Performance scoring, and workout/gym planning into a unified dark-mode command center.
+
+> **Open-Source Attribution**: Built upon [`saisanket232/AI_Gym_Fitness_Assistant`](https://github.com/saisanket232/AI_Gym_Fitness_Assistant) under the preserved [MIT License](LICENSE), upgraded from a prototype into a 7-module full-stack architecture on branch `feature/full-stack-ai-gym-assistant`.
 
 ---
 
-## 🚀 System Architecture & Implementation
-
-The application is built on a split-service architecture designed for real-time video streaming, high-throughput database operations, and low-latency API communication.
+## 1. System Architecture & 7 Core AI Modules
 
 ```mermaid
-graph TD
-    Client[Browser Frontend - AJAX Polling] -->|Request Stats / Video| App[Flask Server]
-    App -->|Stream Frame Bytes| Camera[WorkoutCamera cv2/MediaPipe]
-    Camera -->|Joint Coordinates| Engine[Rule Engine & Pose Analysis]
-    Engine -->|Calculate Form Cues| App
-    App -->|REST SQL Queries| DB[(MySQL Database)]
-    App -->|Nutrition Plan Prompt| LLM[Groq API - Llama 3.3]
+flowchart TB
+    subgraph Frontend["React 18 + Vite + Tailwind CSS + Recharts Dashboard (Port 5173)"]
+        UI_OV["Command Overview & KPIs"]
+        UI_M1["Module 1: AI Gym Trainer UI (MJPEG HUD)"]
+        UI_M2["Module 2: AI Dietician & Calorie Coach"]
+        UI_M3["Module 3: Smart Gym IoT + MQTT Control"]
+        UI_M4["Module 4: AI Habit & ML Adherence"]
+        UI_M5["Module 5: Virtual Gym Buddy Chat"]
+        UI_M6["Module 6: Pose-to-Performance Radar"]
+        UI_M7["Module 7: 7-Day Split & Gym Finder"]
+    end
+
+    subgraph Backend["FastAPI + Pydantic + Bcrypt/JWT Server (Port 8000)"]
+        API["REST API & OpenAPI /docs"]
+        M1["camera.py: MediaPipe 33-Landmark Pose + 5 Exercise State Machines + Kinematic Demo Mode"]
+        M2["diet_service.py: BMI, Mifflin-St Jeor BMR/TDEE, Veg/Non-Veg Planner & Grocery Generator"]
+        M3["iot_mqtt_service.py: paho-mqtt Client + ESP32 Telemetry Simulator + AI Load/Rest Engine"]
+        M4["habit_service.py: scikit-learn RandomForestClassifier Adherence Predictor + Streak Engine"]
+        M5["chatbot_service.py: Sentiment Analyzer + Google Gemini LLM + Local Exercise Science Fallback"]
+        M6["performance_service.py: Heuristic Biomechanics Scorer (ROM, Symmetry, Tempo, Posture)"]
+        M7["planner_service.py: 7-Day Workout Split Generator + Challenges + Sample Gym Recommender"]
+    end
+
+    subgraph Database["SQLAlchemy ORM (SQLite Default / PostgreSQL & MySQL Ready)"]
+        DB[("12 Relational Tables\ngym_ai_assistant.db")]
+    end
+
+    Frontend <-->|"REST JSON + MJPEG Stream"| API
+    API --> M1 & M2 & M3 & M4 & M5 & M6 & M7
+    M1 & M2 & M3 & M4 & M5 & M6 & M7 <--> DB
 ```
 
-### 1. Modular AI Models
-The intelligence is decoupled into three modular subsystems:
-*   **Workout Form Detection (`camera.py`)**: Powered by a custom **MediaPipe Pose** model and **NumPy** geometric rule engine. It tracks 33 critical landmarks, calculates dual-arm elbow angles, wrist alignments (`ELBOW` → `WRIST` → `INDEX`), shoulder symmetry, and back leaning indices. A priority-driven logical router evaluates these vectors and provides live coaching feedback.
-*   **Diet Recommendation Module (`app.py`)**: Dynamically aligns nutrition plans with physical categories. Calculates Body Mass Index (BMI) using clean formula rules and pairs results with distinct macro-nutrient profiles (e.g., protein, low carb, sage/mint balance) mapped persistently in database logs.
-*   **Workout History & Analytics**
-
-Stores workout sessions including exercise type, left/right repetitions, total repetitions, calories burned, and workout duration for future analytics and progress tracking.
-
-### 2. Integration Layer & Backend REST APIs
-*   `GET /video_feed`: Streams processed frame byte arrays as `multipart/x-mixed-replace` boundaries directly to browser image components.
-*   `GET /workout_stats`: Serves live JSON data (reps, angles, calories, duration, custom coach feedback alerts) consumed via client-side AJAX polling intervals.
-*   `GET /finish_workout`: Commits physical session performance, total reps, session length, and calories directly to the relational database, resetting camera states cleanly.
-
-### 3. Database Schema Layout
-The application uses five relational MySQL tables:
-*   `users`: Stores credential verification hashes (`bcrypt`).
-*   `bmi_history`: Stores chronological height, weight, and BMI categories.
-*   `diet_history`: Stores custom nutritional diet guidelines linked to BMI.
-*   `chatbot_history`: Stores persistent chat dialogue histories.
-*   `workout_history`: Tracks exercise, rep counts, duration, and calorie telemetry.
-
----
-## Tech Stack
-
-### Backend
-
-- Flask
-- Python
-
-### Database
-
-- MySQL
-
-### AI & Computer Vision
-
-- MediaPipe
-- OpenCV
-- Groq Llama 3.3
-
-### Frontend
-
-- HTML
-- CSS
-- Bootstrap
-- JavaScript
-
-### Libraries
-
-- NumPy
-- bcrypt
+### Summary of All 7 Modules
+1. **Module 1 — AI Gym Trainer (`camera.py`)**:
+   - Real-time 33-landmark pose estimation using **OpenCV + MediaPipe Pose**.
+   - Supports **5 exercises**: **Bicep Curl, Squat, Pushup, Lunge, and Shoulder Press**.
+   - Computes 2D joint angles (`calculate_angle`), tracks left/right/total repetitions, estimates calories burned, and triggers real-time posture alerts (e.g., torso lean, hip sag, uneven shoulders, shallow squat depth).
+   - **Automatic Demo Mode Fallback**: When no physical webcam is attached, synthesizes kinematic 33-landmark skeletons so the live video stream and rep counter work out-of-the-box on any machine.
+2. **Module 2 — AI Dietician & Calorie Coach (`backend/services/diet_service.py`)**:
+   - Calculates BMI, category, **Mifflin-St Jeor BMR**, and activity-adjusted **TDEE**.
+   - Generates structured **Vegetarian** and **Non-Vegetarian** daily meal plans with macro breakdowns (Protein, Carbs, Fats), daily food logger, and categorized weekly grocery lists.
+   - *Transparency Note*: All calorie and nutrition values are clearly labeled as algorithmic estimates, not medical diagnoses.
+3. **Module 3 — Smart Gym Assistant (`backend/services/iot_mqtt_service.py`)**:
+   - Integrates `paho-mqtt` (`SmartGymIoTManager`) and defines an ESP32 hardware topic/payload contract (`gym/equipment/<device_id>/telemetry`).
+   - Provides **4 interactive simulated smart gym devices** (Smart Dumbbell, Digital Cable Tower, Incline Treadmill, Optical HR Strap) clearly labeled as **Simulation Mode** when physical hardware is absent.
+   - AI rule engine recommends next-set resistance adjustments (`kg`) and recovery rest intervals (`sec`) from live heart rate and rep velocity.
+4. **Module 4 — AI Fitness Habit Tracker (`backend/services/habit_service.py`)**:
+   - Tracks daily workout check-ins, current/longest streaks, missed sessions, and 14-day consistency percentage.
+   - Trains a **`scikit-learn` `RandomForestClassifier`** on a disclosed 500-sample synthetic behavioral adherence dataset (`age`, `sleep_hours`, `stress_level`, `work_hours`, `motivation_level`, `prev_days_active`, `water_liters`) to predict workout completion probability and suggest adaptive schedule adjustments.
+5. **Module 5 — Virtual Gym Buddy (`backend/services/chatbot_service.py`)**:
+   - Multi-turn conversational fitness coach with real-time **sentiment & mood tagging** (`Motivated`, `Fatigued / Sore`, `Stressed`, `Curious`).
+   - Powered by **Google Gemini (`GEMINI_API_KEY` / `gemini-2.0-flash`)** via `.env` and automatically falls back to a comprehensive local exercise-science knowledge engine when no API key is configured.
+6. **Module 6 — Pose-to-Performance Analyzer (`backend/services/performance_service.py`)**:
+   - Evaluates **Range-of-Motion (ROM) efficiency (35%)**, **Posture & Alignment accuracy (30%)**, **Bilateral Left/Right symmetry (20%)**, and **Repetition Tempo consistency (15%)** to compute a transparent **0–100 Performance Score** (clearly labeled as a non-clinical heuristic).
+7. **Module 7 — Gym Recommender & Planner (`backend/services/planner_service.py`)**:
+   - Generates custom **7-day workout splits** tailored to goal, experience level, equipment access, and training frequency.
+   - Includes a searchable exercise catalog, gamified fitness challenges, and a **Nearby Gym Finder** with city/facility filtering (clearly labeled as **Sample Demo Data** when no external Places API key is provided).
 
 ---
-## Project Structure
 
-```text
-AI_Gym_Fitness_Assistant/
+## 2. Database Schema (12 SQLAlchemy Tables)
 
-app.py
+Defined in [`backend/models.py`](backend/models.py) and auto-seeded via [`backend/seed.py`](backend/seed.py):
+1. `users` — Account credentials (`bcrypt` password hashes, age, gender)
+2. `fitness_profiles` — Height, weight, target weight, fitness goal, dietary preference, equipment, schedule
+3. `bmi_records` — Historical BMI, BMR, and TDEE calculations
+4. `workout_plans` — Generated 7-day workout splits and challenges JSON
+5. `workout_sessions` — Logged computer-vision trainer sessions, reps, duration, calories, and posture notes
+6. `diet_plans` — Generated Vegetarian/Non-Vegetarian meal plans and grocery lists
+7. `nutrition_logs` — Daily meal and macro intake tracker records
+8. `chat_messages` — Multi-turn Virtual Gym Buddy conversation history with sentiment & mood tags
+9. `habit_logs` — Daily workout check-ins, sleep, stress, hydration, and ML adherence probabilities
+10. `performance_reports` — Session-level Pose-to-Performance biomechanical breakdowns
+11. `iot_devices` — Smart Gym MQTT equipment state and last telemetry snapshots
+12. `gym_locations` — Sample nearby gym directory with ratings, facilities, and coordinates
 
-camera.py
+---
 
-config.py
+## 3. Step-by-Step Windows Setup & Run Guide
 
-templates/
-
-static/
-
-requirements.txt
-
-README.md
+### Option A: One-Click Windows Launch
+Double-click [`run.bat`](run.bat) or run from PowerShell:
+```powershell
+.\run.bat
 ```
 
----
-## Prerequisites
+### Option B: Manual Terminal Commands (Verified)
 
-- Python 3.10+
-- MySQL Server
-- Webcam
-- Groq API Key
-
----
-## 🛠️ Installation & Setup
-
-### 1. Clone & Setup Environment
-Ensure Python 3.8+ and MySQL Server are installed.
-```bash
-# Set up virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+#### 1. Configure Environment Variables
+```powershell
+Copy-Item .env.example .env
 ```
+*(Optional: Add `GEMINI_API_KEY` in `.env` for live Google Gemini LLM chat; all modules work out-of-the-box without any paid keys).*
 
-### 2. Database Initialization
-Ensure a MySQL server instance is running on `localhost:3306` with a database named `gym_ai_assistant` and standard user credentials. Run the following schemas:
-```sql
-CREATE DATABASE IF NOT EXISTS gym_ai_assistant;
-USE gym_ai_assistant;
-
-CREATE TABLE IF NOT EXISTS users (
-    user_id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100),
-    email VARCHAR(100) UNIQUE,
-    password VARCHAR(255),
-    age INT,
-    gender VARCHAR(20)
-);
-
-CREATE TABLE IF NOT EXISTS bmi_history (
-    bmi_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    height FLOAT,
-    weight FLOAT,
-    bmi FLOAT,
-    category VARCHAR(50),
-    FOREIGN KEY(user_id) REFERENCES users(user_id)
-);
-
-CREATE TABLE IF NOT EXISTS diet_history (
-    diet_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    category VARCHAR(50),
-    diet_plan TEXT,
-    FOREIGN KEY(user_id) REFERENCES users(user_id)
-);
-
-CREATE TABLE IF NOT EXISTS chatbot_history (
-    chat_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    question TEXT,
-    answer TEXT,
-    FOREIGN KEY(user_id) REFERENCES users(user_id)
-);
-
-CREATE TABLE IF NOT EXISTS workout_history (
-    workout_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    exercise VARCHAR(100),
-    left_reps INT,
-    right_reps INT,
-    total_reps INT,
-    duration INT,
-    calories_burned FLOAT,
-    FOREIGN KEY(user_id) REFERENCES users(user_id)
-);
+#### 2. Activate Virtual Environment & Start FastAPI Backend (Port 8000)
+```powershell
+.\venv\Scripts\python.exe app.py
 ```
+- **Backend API**: `http://127.0.0.1:8000`
+- **Interactive Swagger / OpenAPI Documentation**: `http://127.0.0.1:8000/docs`
+- **Default Demo Login Credentials**: `alex@ironclad.ai` / `Fitness@123`
 
-### 3. Set API Credentials
-Create a `.env` file in the root folder:
-```env
-GROQ_API_KEY=your_groq_api_key_here
+#### 3. Start React + Vite Frontend Dashboard (Port 5173)
+Open a second PowerShell terminal:
+```powershell
+cd frontend
+npm install
+npm run dev
 ```
+- **Frontend UI**: `http://localhost:5173`
 
-### 4. Run Server
-```bash
-python app.py
+---
+
+## 4. Running Automated Tests (`pytest`)
+
+```powershell
+.\venv\Scripts\python.exe -m pytest tests/test_api.py -v
 ```
-Go to `http://127.0.0.1:5000` to interact with the application.
-
----
-## Screenshots
-
-### Home Page
-
-![Home](assets/home.png)
-
-### Dashboard
-
-![Dashboard](assets/dashboard.png)
-
-### Workout Detection
-
-![Workout](assets/workout.png)
-
-### AI Chatbot
-
-![Chatbot](assets/chatbot.png)
+Verifies health checks, JWT authentication, profile updates, joint-angle math, 5-exercise computer vision state machines, diet generation, IoT MQTT simulation, `scikit-learn` adherence prediction, chatbot fallback, Pose-to-Performance scoring, and 7-day split/gym recommendations.
 
 ---
 
-## 📊 Verification & Testing Report
+## 5. License
 
-| Module | Test Scenario | Expected Result | Actual Result | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| **Authentication** | Sign up new user and login | Hash matching via Bcrypt, grant Flask session | Passwords securely verified | **Passed** |
-| **BMI Calculator** | Height = 175cm, Weight = 70kg | Calculates BMI ~22.86, inserts "Normal" to DB | Correct math & database commit | **Passed** |
-| **Pose Detection** | Open workout module | Open Camera stream overlaying skeleton lines | Instant, low-latency rendering | **Passed** |
-| **Coaching Engine** | Lean forward or bend wrist | UI displays warnings: "Keep back straight" / "Keep wrist straight" | Priority flags trigger warn states | **Passed** |
-| **Webcam Release** | Navigate away from workout screen | Generator exits, dynamic `VideoCapture.release()` frees hardware | Webcam turns off instantly | **Passed** |
-| **Chat Assistant** | Ask fitness query | Queries Llama 3.3 on Groq, returns relevant tips | Accurate assistant replies | **Passed** |
-| **Finish Session** | Click Finish Workout button | Commit reps, calories, and duration, then clear capture state | Logged to database, state resets | **Passed** |
-
----
-## ✨ Features
-
-- 🔐 User Authentication
-- 📏 BMI Calculator
-- 🥗 Personalized Diet Recommendation
-- 🤖 AI Chatbot (Groq LLM)
-- 🎥 Live Workout Detection
-- 🧍 AI Posture Feedback
-- 💪 Dual Arm Rep Counter
-- 📊 Workout History
-- 📡 Live Video Streaming
-- 🗄️ MySQL Database Integration
-- 🌐 REST APIs
----
-
-
-## 📈 Future Enhancements
-*   **Predictive Performance Curves**: Introduce regression models predicting weight overload risks based on rep velocity fatigue.
-*   **Time-Series Progress Charts**: Build SVG dashboard charts highlighting calories burned and duration curves across consecutive weeks.
-*   **Multi-Exercise Classifier**: Extend MediaPipe landmark sequences using LSTM models to dynamically recognize Squats, Lunges, and Shoulder Presses.
-
-
-## License
-
-This project is licensed under the MIT License.
+This project preserves the original **MIT License** from `saisanket232/AI_Gym_Fitness_Assistant`. See [`LICENSE`](LICENSE) for full details.

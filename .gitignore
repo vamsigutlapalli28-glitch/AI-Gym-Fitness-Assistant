@@ -1,32 +1,30 @@
-# Virtual Environment
+# Python & Virtual Environment
 venv/
-env/
-
-# Python Cache
+.venv/
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
+*.pyd
+.pytest_cache/
 
-# Environment Variables
+# Environment Secrets (NEVER COMMIT)
 .env
+backend/.env
+**/.env
+.env.local
+.env.*.local
 
-# VS Code
-.vscode/
-
-# macOS
-.DS_Store
-
-# Uploaded Files
-uploads/
-
-# Logs
-*.log
-
-# SQLite (if used)
+# Local SQLite Database
+*.db
 *.sqlite3
 
-# MediaPipe Cache
-*.tflite
+# Frontend Node Modules & Build Output
+frontend/node_modules/
+frontend/dist/
+node_modules/
 
-# Temporary Files
-*.tmp
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
